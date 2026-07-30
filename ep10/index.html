@@ -1,0 +1,142 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP10 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP10 · 中间件</span>
+    <h1>请求路上的<span class="k">那道关卡</span></h1>
+    <p class="lead">中间件就是「请求进处理函数之前 / 响应出之前」统一插进去的一段逻辑：记日志、鉴权、加 CORS 头。两边心智一样；差别是<b>落点</b>——Laravel 写中间件类 + Kernel 注册，FastAPI 路由级用 <code>Depends</code>、全局用 <code>add_middleware</code>。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>无论是 Laravel 的 <code>Middleware</code> 还是 FastAPI 的 <code>Depends</code> / <code>add_middleware</code>，本质都是<b>「请求 → 前置逻辑 → 处理函数 → 后置逻辑」</b>的管道。Laravel 把它收进 Kernel 和路由分组；FastAPI 把它<b>拆成两层</b>：路由级依赖 + 全局 ASGI 中间件。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的中间件</div><ul>
+        <li>中间件是一个类，<code>handle()</code> 包裹请求</li>
+        <li>注册在 <code>app/Http/Kernel.php</code>：全局 / 路由 / 分组</li>
+        <li>分组用 <code>Route::middleware('x')->group()</code></li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的中间件</div><ul>
+        <li>路由级「中间件」= <code>Depends(...)</code> 依赖（最常用）</li>
+        <li>全局 ASGI 中间件用 <code>app.add_middleware(...)</code></li>
+        <li>分组用 <code>APIRouter(dependencies=...)</code></li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是一套中间件体系，FastAPI 是「依赖 + ASGI 中间件」两层</b>。同一个管道心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照<span class="hl">路由级中间件</span></h2>
+    <p>「某条路由进来先跑一段逻辑」——Laravel 用 <code>Route::middleware('log')</code>，FastAPI 用 <code>dependencies=[Depends(log_request)]</code>。同一个心智。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="cm">// 需先注册 log 中间件</span>
+<span class="k">Route</span>::middleware(<span class="s">'log'</span>)
+     ->get(<span class="s">'/secure'</span>,
+  <span class="k">fn</span> () => [<span class="s">'ok'</span> => <span class="k">true</span>]);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># app/ep10.py</span>
+<span class="k">def</span> log_request(req: Request):
+    <span class="k">return</span> <span class="k">None</span>  <span class="cm"># 放行；可 raise 拦截</span>
+
+<span class="k">@router</span>.get(<span class="s">'/secure'</span>,
+          dependencies=[Depends(log_request)])
+<span class="k">def</span> secure():
+    <span class="k">return</span> {<span class="s">'ok'</span>: <span class="k">True</span>}</div></div>
+    </div>
+    <div class="note">FastAPI 里 <code>dependencies=[Depends(...)]</code> 是<b>路由级中间件</b>：进处理函数前先跑 <code>log_request</code>，返回 None 即放行；想拦截直接 <code>raise HTTPException</code>。等于 Laravel <code>Route::middleware('log')</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照<span class="hl">分组中间件 + 全局 CORS</span></h2>
+    <p>「一组路由统一鉴权」用分组依赖；「所有响应加 CORS 头」用全局 ASGI 中间件——两层分清楚。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 分组中间件</span>
+<span class="k">Route</span>::middleware(<span class="s">'auth:sanctum'</span>)
+  ->prefix(<span class="s">'posts'</span>)
+  ->group(<span class="k">function</span> () { ... });
+
+<span class="cm">// 全局 CORS 在 Kernel 的</span>
+<span class="cm">// $middleware 数组里注册</span>
+<span class="cm">// \Illuminate\Http\Middleware\HandleCors</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 分组依赖（=分组中间件）</span>
+posts = APIRouter(
+    prefix=<span class="s">'/posts'</span>,
+    dependencies=[Depends(get_current_user)])
+
+<span class="cm"># 全局 ASGI 中间件 CORS</span>
+<span class="k">from</span> fastapi.middleware.cors <span class="k">import</span> CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[<span class="s">'*'</span>],
+    allow_methods=[<span class="s">'*'</span>],
+    allow_headers=[<span class="s">'*'</span>])</div></div>
+    </div>
+    <div class="note">关键区别：<code>dependencies=</code> 是<b>路由级（只罩住这个 router 的路由）</b>；<code>add_middleware</code> 是<b>全局（包住整个 app 的每一请求）</b>。CORS、日志这类对所有请求生效的逻辑走全局；鉴权这类只罩部分路由的走路由/分组依赖。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · dependencies= 不是全局</b>：写在某个 <code>APIRouter(dependencies=...)</code> 里，只对该 router 的路由生效。想全站生效要用 <code>app.add_middleware</code> 或给主 router 也加依赖。</div>
+    <div class="note"><b>坑 2 · 中间件顺序</b>：Laravel 按 Kernel 数组顺序跑；FastAPI 全局中间件按<b>注册的反序</b>包请求（先注册的在外层）。需要「先 CORS 再鉴权」要注意登记顺序。</div>
+    <div class="note"><b>坑 3 · 依赖函数返回值</b>：路由级依赖 <code>return None</code> 是放行；若想往处理函数<b>注入</b>对象（如当前用户），就 return 那个对象，处理函数参数里声明同名类型即可拿到。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 /ep10/secure（路由级中间件：先跑 log_request）</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep10.py</code> 跑起来：访问 <code>/ep10/secure</code> 会先经过 <code>log_request</code> 依赖再返回 <code>{"ok": true}</code>。打开 <code>/docs</code> 能看到 EP10 分组。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>把 <code>log_request</code> 升级成「只放行带 <code>x-token</code> 头的请求」，缺失就 401：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep10.py 里改 log_request：</span>
+<span class="k">def</span> log_request(req: Request):
+    <span class="k">if</span> <span class="k">not</span> req.headers.get(<span class="s">'x-token'</span>):
+        <span class="k">raise</span> HTTPException(401,
+            detail=<span class="s">'missing token'</span>)</div></div>
+    <div class="note">做完你会发现：路由级依赖拦截 = Laravel 中间件里 <code>return response</code> 提前返回。中间件心智没变，只是 FastAPI 用「抛异常」表达「不放行」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>单路由加逻辑</b></td><td><code>Route::middleware('x')</code></td><td><code>dependencies=[Depends(x)]</code></td></tr>
+      <tr><td><b>一组路由加逻辑</b></td><td><code>middleware()->group()</code></td><td><code>APIRouter(dependencies=)</code></td></tr>
+      <tr><td><b>全局中间件</b></td><td>Kernel <code>$middleware</code></td><td><code>app.add_middleware(...)</code></td></tr>
+      <tr><td><b>跨域 CORS</b></td><td>HandleCors 中间件</td><td><code>CORSMiddleware</code> + <code>add_middleware</code></td></tr>
+      <tr><td><b>拦截请求</b></td><td>return response 提前返回</td><td><code>raise HTTPException(...)</code></td></tr>
+      <tr><td><b>向处理函数注入</b></td><td>request 里取</td><td>依赖 return 对象 + 参数声明</td></tr>
+      <tr><td><b>执行顺序</b></td><td>按 Kernel 数组顺序</td><td>全局中间件按注册<b>反序</b></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">中间件心智没变：<br><span class="hl">请求 → 前置 → 处理函数 → 后置</span>。<br>Laravel 一套体系，FastAPI 两层（依赖 + ASGI）。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：中间件注册于 <code>app/Http/Kernel.php</code>（全局 / 路由 / 分组），<code>Route::middleware('x')->group()</code> 做分组鉴权——官方文档 Middleware 章节</li>
+        <li><b>FastAPI 0.140.13</b>：路由级中间件 = <code>Depends</code> 依赖；全局 ASGI 中间件用 <code>app.add_middleware()</code>（如 <code>CORSMiddleware</code>）；分组用 <code>APIRouter(dependencies=)</code>——官方文档 Middleware / Advanced Middleware</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep10.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep09/"><div class="lbl">← 上一期</div><div class="ttl">EP09 · 依赖注入进阶</div></a><a class="next" href="../ep11/"><div class="lbl">下一期 →</div><div class="ttl">EP11 · 认证授权</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP10 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

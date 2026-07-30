@@ -1,0 +1,162 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP04 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP04 · 请求与响应</span>
+    <h1>进来的<span class="k">那一份包裹</span></h1>
+    <p class="lead">每个请求都是一份「包裹」：URL、查询参数、请求头、请求体。两边都要先拆包裹（请求对象），再打包回信（响应对象）。本篇讲清两边怎么读、怎么回。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>无论是 <code>Illuminate\Http\Request</code> 还是 FastAPI 的 <code>Request</code>，本质都是<b>「把 HTTP 请求包成一個对象，让你随手取」</b>；响应则相反——你返回数据，框架帮你包成 HTTP 响应。Laravel 用 <code>$request</code> 对象，FastAPI 用 <code>Request</code> 参数（或直接返回 dict）。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的请求/响应</div><ul>
+        <li>入站：<code>$request</code> 对象（类型提示注入）</li>
+        <li>读取：<code>$r->path()</code> / <code>$r->header()</code> / <code>$r->input()</code></li>
+        <li>回信：<code>response()->json($d, 201)</code></li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的请求/响应</div><ul>
+        <li>入站：函数参数 <code>req: Request</code></li>
+        <li>读取：<code>req.url</code> / <code>req.headers</code> / <code>Header(...)</code></li>
+        <li>回信：<b>直接 return dict</b> 自动变 JSON，或 <code>JSONResponse(...)</code></li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「对象方法」思维，FastAPI 是「类型提示 + 直接返回」思维</b>。同一个拆包/打包心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">读取请求对象</span></h2>
+    <p>「echo」端点：读当前路径和请求头里的 <code>x-token</code>。左右一一对应。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::get(<span class="s">'/echo'</span>, <span class="k">fn</span> (\Illuminate\Http\Request $r) => [
+    <span class="s">'path'</span>  => $r-&gt;path(),
+    <span class="s">'token'</span> => $r-&gt;header(<span class="s">'x-token'</span>),
+]);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep04.py</span>
+<span class="k">@router</span>.get(<span class="s">'/echo'</span>)
+<span class="k">def</span> echo(req: Request,
+           x_token: Optional[str] = Header(None)):
+    <span class="k">return</span> {
+        <span class="s">'path'</span>: req.url.path,
+        <span class="s">'token'</span>: x_token,
+    }</div></div>
+    </div>
+    <div class="note">身体里的 <code>Request</code> 对象能拿到 URL、header、body；而 <code>x_token: Header(None)</code> 这种<b>参数声明</b>是 FastAPI 的「声明式取头」——Laravel 老手习惯用 <code>$r->header()</code>，FastAPI 把取头写成了函数签名。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">自定义响应（状态码 + 头）</span></h2>
+    <p>要自己控制状态码和返回头时，两边都能显式打包响应，而不是让框架默认 200。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 自定义 201 + 头（典型写法）</span>
+<span class="k">Route</span>::get(<span class="s">'/custom'</span>, <span class="k">function</span> () {
+    <span class="k">return</span> response()-&gt;json(
+        [<span class="s">'ok'</span> => <span class="k">true</span>], 201)
+        -&gt;header(<span class="s">'x-powered-by'</span>, <span class="s">'laravel'</span>);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep04.py</span>
+<span class="k">@router</span>.get(<span class="s">'/custom'</span>)
+<span class="k">def</span> custom():
+    <span class="k">return</span> JSONResponse(
+        status_code=201,
+        content={<span class="s">'ok'</span>: <span class="k">True</span>},
+        headers={<span class="s">'x-powered-by'</span>: <span class="s">'fastapi'</span>})</div></div>
+    </div>
+    <div class="note">对照《ep04.py》注释：<code>JSONResponse(status_code=, content=, headers=)</code> 正对应 Laravel 的 <code>response()->json($d, 201)->header(...)</code>。日常返回 dict 是「简写」，要精细控制就换 <code>JSONResponse</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">请求里有什么（拆包清单）</span></h2>
+    <p>同一条请求，两边都能拿到 URL、查询参数、请求头。下面把访问方式并列出来。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// $r = Illuminate\Http\Request</span>
+$r-&gt;url();          <span class="cm"># 完整 URL</span>
+$r-&gt;path();        <span class="cm"># 路径</span>
+$r-&gt;query(<span class="s">'q'</span>);    <span class="cm"># 查询参数</span>
+$r-&gt;header(<span class="s">'x-token'</span>); <span class="cm"># 请求头</span>
+$r-&gt;input(<span class="s">'name'</span>); <span class="cm"># body 字段</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># req: Request</span>
+req.url          <span class="cm"># 完整 URL</span>
+req.url.path     <span class="cm"># 路径</span>
+req.query_params <span class="cm"># 查询参数</span>
+req.headers      <span class="cm"># 请求头</span>
+<span class="cm"># body 字段用参数声明：</span>
+name: str = Body(...)  <span class="cm"># 或 Pydantic</span></div></div>
+    </div>
+    <div class="note">Laravel 把「取查询/取头/取 body」都收进一个 <code>$request</code> 对象（方法/属性混用）；FastAPI 则是<b>属性 + 参数声明</b>双轨——简单字段用类型提示自动拆，复杂读取才动用 <code>Request</code> 对象。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 忘了给函数加 Request 参数</b>：FastAPI 不会像 Laravel 那样「全局总有 <code>$request</code>」。需要请求对象就<b>显式写 <code>req: Request</code></b> 在签名里，否则函数拿不到。</div>
+    <div class="note"><b>坑 2 · 返回 dict 却想改状态码</b>：直接 <code>return {...}</code> 永远 200。要 201/401 等自定义状态码或自定义头，必须包一层 <code>JSONResponse(...)</code>，不能依赖 return。</div>
+    <div class="note"><b>坑 3 · Header 名大小写/连字符</b>：FastAPI 参数名 <code>x_token</code> 自动映射到 HTTP 头 <code>x-token</code>（连字符↔下划线）；写错名字会一直是 <code>None</code>。Laravel 的 <code>$r->header('x-token')</code> 则要带连字符原样写。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 /ep04/echo（带头 x-token: abc）与 /ep04/custom（看 201 + 头）</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep04.py</code> 跑起来：<code>/ep04/echo</code> 回显路径与 token；<code>/ep04/custom</code> 固定返回 <code>201</code> 状态码和 <code>x-powered-by: fastapi</code> 头。打开 <code>/docs</code> 可在线调试。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>/ep04/echo</code> 加一个查询参数读取，并让 <code>/ep04/custom</code> 多返回一个自定义头：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep04.py 里改：</span>
+<span class="k">@router</span>.get(<span class="s">'/echo'</span>)
+<span class="k">def</span> echo(req: Request,
+           q: Optional[str] = Query(None),
+           x_token: Optional[str] = Header(None)):
+    <span class="k">return</span> {<span class="s">'path'</span>: req.url.path,
+            <span class="s">'q'</span>: q, <span class="s">'token'</span>: x_token}
+
+<span class="cm"># custom 再加一个头：</span>
+headers={<span class="s">'x-powered-by'</span>: <span class="s">'fastapi'</span>,
+         <span class="s">'x-hello'</span>: <span class="s">'world'</span>}</div></div>
+    <div class="note">做完你会发现：加查询参数只是多写一个类型提示 <code>q: Optional[str] = Query(None)</code>，和 Laravel <code>$r->query('q')</code> 同构——只是 FastAPI 把「取值」前置成了函数签名。难点在「签名里声明」的习惯。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>拿请求对象</b></td><td><code>$r = Request $r</code></td><td><code>req: Request</code></td></tr>
+      <tr><td><b>读路径</b></td><td><code>$r->path()</code></td><td><code>req.url.path</code></td></tr>
+      <tr><td><b>读请求头</b></td><td><code>$r->header('x-token')</code></td><td><code>x: str = Header(None)</code></td></tr>
+      <tr><td><b>读查询参数</b></td><td><code>$r->query('q')</code></td><td><code>q: str = Query(None)</code></td></tr>
+      <tr><td><b>默认响应</b></td><td><code>return [...]</code></td><td><code>return {...}</code></td></tr>
+      <tr><td><b>自定义状态码/头</b></td><td><code>response()->json($d,201)->header()</code></td><td><code>JSONResponse(status_code=, headers=)</code></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">请求/响应心智没变：<br><span class="hl">拆进来 → 处理后 → 打包回去</span>。<br>Laravel 调对象方法，FastAPI 写类型提示。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>Illuminate\Http\Request</code> 提供 <code>path()</code>、<code>url()</code>、<code>header()</code>、<code>query()</code>、<code>input()</code>；响应用 <code>response()->json($data, $status)</code> 并可链式 <code>->header()</code> —— 官方文档 HTTP Requests / Responses 章节</li>
+        <li><b>FastAPI 0.140.13</b>：路径操作函数接收 <code>Request</code> 读取入站数据；直接 return dict 自动序列化为 JSON，或用 <code>fastapi.responses.JSONResponse(status_code=, content=, headers=)</code> 精确控制 —— 官方文档 Request Body / Response 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep04.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep03/"><div class="lbl">← 上一期</div><div class="ttl">EP03 · 控制器 vs 路径操作</div></a><a class="next" href="../ep05/"><div class="lbl">下一期 →</div><div class="ttl">EP05 · 校验与序列化</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP04 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

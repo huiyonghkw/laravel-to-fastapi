@@ -1,0 +1,168 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP09 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP09 · 依赖注入进阶</span>
+    <h1>把对象「打包好」<span class="k">自动送进函数</span></h1>
+    <p class="lead">依赖注入（DI）就是：<b>你只声明「我需要什么」，框架负责造好并塞进来</b>。Laravel 用服务容器 <code>App::bind/singleton</code> 解析；FastAPI 用 <code>Depends</code> 串成解析链。本篇讲清单例、嵌套依赖，以及最容易踩的三个坑。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边都在做同一件事：<b>「声明依赖 → 框架去解析 → 注入给你」</b>。差别只在写法：Laravel 把绑定收进<b>服务容器</b>，靠类型提示自动解析；FastAPI 把依赖写成<b>函数/类</b>，用 <code>Depends</code> 串成调用链。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的容器</div><ul>
+        <li><code>App::bind()</code> 每次解析都新建</li>
+        <li><code>App::singleton()</code> 全进程只一份</li>
+        <li>控制器构造器类型提示，容器自动注入</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的 Depends</div><ul>
+        <li>依赖是<b>函数或类</b>，返回什么就注入什么</li>
+        <li>模块级实例 ≈ <code>singleton</code>（全进程一份）</li>
+        <li><code>Depends(...)</code> 嵌套 = 解析链</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「容器绑定」思维，FastAPI 是「依赖函数」思维</b>。同一个心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">单例：容器绑定 vs 模块级实例</span></h2>
+    <p>「全进程只保留一份」——左 Laravel 用 <code>App::singleton()</code>，右 FastAPI 用<b>模块级实例</b> + 一个返回它的依赖函数。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// AppServiceProvider::register()</span>
+<span class="k">app</span>()->singleton(Counter::<span class="k">class</span>,
+    <span class="k">fn</span> () => <span class="k">new</span> Counter());
+
+<span class="cm">// 在别处解析——永远同一份</span>
+<span class="k">$c</span> = app(Counter::<span class="k">class</span>);
+<span class="k">$c</span>->next();</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 模块级实例 = singleton</span>
+<span class="k">_counter</span> = Counter()
+
+<span class="k">def</span> get_counter():
+    <span class="k">return</span> _counter  <span class="cm"># 永远同一份</span>
+
+<span class="cm"># 路径操作里注入</span>
+<span class="k">def</span> count(c: Counter = Depends(get_counter)):
+    <span class="k">return</span> {<span class="s">'n'</span>: c.next()}</div></div>
+    </div>
+    <div class="note">两种写法结果一样：计数在多次请求间<b>累加</b>，因为指向的是同一个对象。关键在「实例放哪」——Laravel 交给容器，FastAPI 放在模块作用域。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">嵌套依赖（解析链）</span></h2>
+    <p>「A 依赖 B，B 又依赖 C」——两边都自动地从最里层往外解。左 Laravel 在绑定闭包里取容器里的配置；右 FastAPI 用 <code>Depends</code> 把 <code>get_config</code> 喂给 <code>get_db_url</code>。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 容器解析时先拿到 config</span>
+<span class="k">app</span>()->bind(DbService::<span class="k">class</span>,
+  <span class="k">fn</span> ($app) => <span class="k">new</span> DbService(
+    $app[<span class="s">'config'</span>]->get(<span class="s">'app.env'</span>)
+  ));
+<span class="cm">// 用的时候只拿结果</span>
+<span class="k">$url</span> = app(DbService::<span class="k">class</span>)->url();</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 依赖里再 Depends = 解析链</span>
+<span class="k">def</span> get_config():
+    <span class="k">return</span> {<span class="s">'env'</span>: <span class="s">'dev'</span>}
+
+<span class="k">def</span> get_db_url(cfg: <span class="k">dict</span> = Depends(get_config)):
+    <span class="k">return</span> <span class="s">f"db://{cfg['env']}"</span>
+
+<span class="cm"># 注入的就是拼好的 url</span>
+<span class="k">def</span> db_url(url: <span class="k">str</span> = Depends(get_db_url)):
+    <span class="k">return</span> {<span class="s">'url'</span>: url}</div></div>
+    </div>
+    <div class="note">FastAPI 的嵌套 <code>Depends</code> 等于 Laravel 容器<b>逐层解析</b>。<code>get_db_url</code> 自己不需要知道配置怎么来的，只声明「我依赖一个 dict」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">在路由里注入（真实端点）</span></h2>
+    <p>落到真实接口：左 Laravel 在路由闭包里直接用 <code>config()</code> 取配置；右 FastAPI 把依赖声明成路径操作的<b>默认参数</b>。两边返回结构一致。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::get(<span class="s">'/db-url'</span>, <span class="k">fn</span> () =>
+  [<span class="s">'url'</span> => <span class="s">'db://'</span> . config(<span class="s">'app.env'</span>)]
+);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep09.py</span>
+<span class="k">@router</span>.get(<span class="s">'/count'</span>)
+<span class="k">def</span> count(c: Counter = Depends(get_counter)):
+    <span class="k">return</span> {<span class="s">'n'</span>: c.next()}
+
+<span class="k">@router</span>.get(<span class="s">'/db-url'</span>)
+<span class="k">def</span> db_url(url: <span class="k">str</span> = Depends(get_db_url)):
+    <span class="k">return</span> {<span class="s">'url'</span>: url}</div></div>
+    </div>
+    <div class="note">Laravel 直接在闭包里<code>config()</code>；FastAPI 用依赖把「取配置」这一动作<b>解耦</b>成函数——换实现、做测试时只替换依赖，路由本身不动。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 单例状态跨请求累加</b>：模块级实例 / <code>singleton</code> 是全进程一份，<code>/count</code> 每次都 +1，且<b>所有请求共享</b>。做计数器演示 OK，但放「每用户状态」会串号——那该用 <code>request</code> 作用域或数据库。</div>
+    <div class="note"><b>坑 2 · use_cache 让依赖在同请求内只跑一次</b>：FastAPI 默认<b>同一请求内缓存</b>依赖结果（多次 Depends 同一函数只执行一次）。若依赖里有「每次都要重算」的逻辑（如时间戳、随机数），要 <code>Depends(get_x, use_cache=False)</code> 关掉缓存。</div>
+    <div class="note"><b>坑 3 · bind vs singleton 搞反</b>：<code>App::bind()</code> 每次解析都 new 一个；<code>App::singleton()</code> 才只一份。FastAPI 里「模块级实例」对应 <code>singleton</code>，不是 <code>bind</code>。想每次新建就别用模块级变量，改在依赖函数里 <code>return X()</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="o">  curl http://127.0.0.1:8000/ep09/count   # 1, 2, 3... 累加</span>
+<span class="o">  curl http://127.0.0.1:8000/ep09/db-url  # {"url":"db://dev"}</span>
+<span class="cm">  试几次 /ep09/count，看 n 一直涨 = 单例生效</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep09.py</code> 跑起来：<code>/ep09/count</code> 反复请求数字累加（单例 <code>_counter</code>）；<code>/ep09/db-url</code> 经嵌套依赖拼出 URL。打开 <code>/docs</code> 能看到两个端点。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>加一个带时间戳的依赖，并故意关掉缓存，看每次值不同：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep09.py 里加：</span>
+<span class="k">import</span> time
+<span class="k">def</span> now(use_cache=<span class="k">False</span>):
+    <span class="k">return</span> time.time()
+
+<span class="k">@router</span>.get(<span class="s">'/now'</span>)
+<span class="k">def</span> get_now(t = Depends(now, use_cache=<span class="k">False</span>)):
+    <span class="k">return</span> {<span class="s">'t'</span>: t}</div></div>
+    <div class="note">做完你会发现：加了 <code>use_cache=False</code>，同请求内多次调用也每次重算；去掉它则只算一次。这和 Laravel 容器「解析一次缓存结果」的心智一致——只是 FastAPI 把开关摆到了 <code>Depends</code> 上。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>每次新建</b></td><td><code>App::bind()</code></td><td>依赖里 <code>return X()</code></td></tr>
+      <tr><td><b>全进程一份</b></td><td><code>App::singleton()</code></td><td>模块级实例 + 依赖返回</td></tr>
+      <tr><td><b>解析依赖</b></td><td><code>app(X::class)</code></td><td><code>Depends(get_x)</code></td></tr>
+      <tr><td><b>嵌套依赖</b></td><td>绑定闭包取容器</td><td><code>Depends</code> 里再 <code>Depends</code></td></tr>
+      <tr><td><b>同请求缓存</b></td><td>容器缓存</td><td>默认开；<code>use_cache=False</code> 关</td></tr>
+      <tr><td><b>路由里注入</b></td><td>构造器类型提示</td><td>路径操作默认参数</td></tr>
+      <tr><td><b>换实现/测试</b></td><td>重写绑定</td><td>替换依赖函数</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">依赖注入心智没变：<br><span class="hl">声明你要什么，框架送进来</span>。<br>Laravel 装进容器，FastAPI 串成依赖链。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：服务容器支持 <code>bind()</code>（每次解析新建）与 <code>singleton()</code>（全进程一份），通过 <code>app(X::class)</code> 或控制器构造器类型提示解析 —— 官方文档 Service Container 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>Depends</code> 支持函数/类依赖、嵌套依赖链、以及 <code>use_cache=False</code> 关闭同请求内缓存；模块级实例等价于 singleton —— 官方文档 Dependencies / Sub-dependencies 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep09.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep08/"><div class="lbl">← 上一期</div><div class="ttl">EP08 · 事务与关联</div></a><a class="next" href="../ep10/"><div class="lbl">下一期 →</div><div class="ttl">EP10 · 中间件</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP09 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

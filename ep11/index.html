@@ -1,0 +1,162 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP11 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP11 · 认证授权</span>
+    <h1>谁在敲门，<span class="k">就发给谁一把钥匙</span></h1>
+    <p class="lead">认证授权就是「<b>发 token</b>」和「<b>查 token 放行</b>」两件事。Laravel 用 Sanctum 管 token、用 <code>auth:sanctum</code> 中间件护路由；FastAPI 用 <code>OAuth2PasswordBearer</code> 取 Bearer、用 <code>Depends(get_current_user)</code> 护路由。心智一样，落笔不同。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边都是<b>「登录发 token → 带 token 访问 → 中间件/依赖校验」</b>三步走。Laravel 把它收进 Sanctum 包和路由中间件；FastAPI 把它<b>拆成可组合的函数依赖</b>。同一个心智，两种落笔。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的认证</div><ul>
+        <li>Sanctum 负责<b>签发/存储</b> token</li>
+        <li><code>auth:sanctum</code> 中间件校验 Bearer</li>
+        <li>路由上加中间件即受保护</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的认证</div><ul>
+        <li><code>OAuth2PasswordBearer</code> 从请求取 token</li>
+        <li><code>Depends(get_current_user)</code> 校验并注入用户</li>
+        <li>路由加依赖即受保护，可复用</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「中间件」思维，FastAPI 是「依赖注入」思维</b>。钥匙一样，看门人站的位置不同。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">发 token（登录）</span></h2>
+    <p>登录成功后返回 <code>access_token</code>。两边结构完全一致。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::post(<span class="s">'/login'</span>, <span class="k">function</span> () {
+    <span class="k">return</span> [
+        <span class="s">'access_token'</span> => <span class="s">'fake-jwt'</span>,
+        <span class="s">'token_type'</span>   => <span class="s">'bearer'</span>,
+    ];
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep11.py · 教学 stub</span>
+<span class="k">@router</span>.post(<span class="s">'/login'</span>)
+<span class="k">def</span> login(form: OAuth2PasswordRequestForm
+           = Depends()):
+    <span class="cm"># 演示账号 alice / secret</span>
+    <span class="k">return</span> TokenOut(
+        access_token=<span class="s">f'user:{form.username}'</span>)</div></div>
+    </div>
+    <div class="note">这是<b>教学 stub</b>（token 形如 <code>user:alice</code>），不是生产 JWT。真实项目：Laravel 用 <code>$user-&gt;createToken()</code>；FastAPI 用 PyJWT / Authlib 签发。Swagger 的 Authorize 走这个表单登录。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">保护路由（查 token）</span></h2>
+    <p>「这一组/这条要登录」——左用中间件护 <code>/me</code>，右用依赖护 <code>/me</code>。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// auth:sanctum 护 /me</span>
+<span class="k">Route</span>::middleware(<span class="s">'auth:sanctum'</span>)
+     -&gt;get(<span class="s">'/me'</span>, <span class="k">function</span> () {
+    <span class="k">return</span> auth()-&gt;user();
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># Depends 护 /me</span>
+<span class="k">@router</span>.get(<span class="s">'/me'</span>)
+<span class="k">def</span> me(u: <span class="k">dict</span> =
+        Depends(get_current_user)):
+    <span class="k">return</span> u</div></div>
+    </div>
+    <div class="note">FastAPI 的「护路由」是<b>路由级依赖</b>（<code>Depends</code>），不是全局中间件。被依赖的函数里抛 <code>401</code> 即拒绝访问——等于中间件的 <code>return 401</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">取 token 的依赖函数</span></h2>
+    <p>FastAPI 把「读懂 token」抽成一个可复用函数：<code>OAuth2PasswordBearer</code> 先从请求抓 Bearer，<code>get_current_user</code> 再做校验。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 由 auth:sanctum 隐式处理</span>
+<span class="cm">// 控制器里直接取用户：</span>
+<span class="k">auth</span>()-&gt;user();
+<span class="cm">// 框架自动解析 Bearer token</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 显式取 + 校验 token</span>
+oauth2 = OAuth2PasswordBearer(
+    tokenUrl=<span class="s">'/ep11/login'</span>)
+
+<span class="k">def</span> get_current_user(
+    token: <span class="k">str</span> = Depends(oauth2)):
+    <span class="k">if not</span> token.startswith(<span class="s">'user:'</span>):
+        <span class="k">raise</span> HTTPException(401,
+            detail=<span class="s">'invalid token'</span>)
+    username = token.removeprefix(<span class="s">'user:'</span>)
+    <span class="k">return</span> {<span class="s">'user'</span>: username}</div></div>
+    </div>
+    <div class="note">Laravel 把「取+校验用户」藏在 <code>auth:sanctum</code> 里；FastAPI 把它<b>摊开成两个函数</b>，更显式、更好单测。注意 <code>tokenUrl</code> 必须等于登录路径（坑 3）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 别把密钥硬编码</b>：JWT 的 <code>SECRET_KEY</code>、Sanctum 的 <code>APP_KEY</code> 必须进 <code>.env</code>，别写死在代码里。提交到仓库等于交出门钥匙。</div>
+    <div class="note"><b>坑 2 · 生产别用 stub token</b>：演示约定 <code>user:&lt;name&gt;</code>，仅教学。真实 FastAPI 用 JWT（PyJWT）签发/校验，Laravel 用 Sanctum 真实 token；否则任何人都能伪造身份。</div>
+    <div class="note"><b>坑 3 · tokenUrl 路径要一致</b>：<code>OAuth2PasswordBearer(tokenUrl=...)</code> 必须和登录路由路径相同（本例 <code>/ep11/login</code>），否则 <code>/docs</code> 的 Authorize 按钮会 404，依赖也取不到 token。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  1) POST /ep11/login  → username=alice password=secret</span>
+<span class="cm">  2) 点 Authorize 填 Bearer token，或 Header: Authorization: Bearer user:alice</span>
+<span class="cm">  3) GET  /ep11/me     → 不带 token 得 401，带 token 才放行</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep11.py</code> 跑起来：登录用表单 <code>alice/secret</code> 拿 <code>user:alice</code>；<code>/ep11/me</code> 经 <code>Depends(get_current_user)</code> 校验。打开 <code>/docs</code> 点 Authorize 即可联调。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>/ep11/me</code> 加一个「仅 admin」的校验：当 token 不等于 <code>admin-jwt</code> 时返回 403。</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 改 get_current_user：</span>
+<span class="k">def</span> get_current_user(
+    token: <span class="k">str</span> = Depends(oauth2)):
+    <span class="k">if</span> token != <span class="s">'admin-jwt'</span>:
+        <span class="k">raise</span> HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail=<span class="s">'forbidden'</span>)
+    <span class="k">return</span> {<span class="s">'user'</span>: token}</div></div>
+    <div class="note">做完你会发现：权限控制只是依赖函数里多一个判断，和 Laravel 在中间件/Policy 里写 <code>if (!$user-&gt;isAdmin()) abort(403)</code> 完全同构。难点不在语法，在「把校验放哪一层」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>发 token（登录）</b></td><td><code>createToken()</code></td><td><code>return {"access_token": ...}</code></td></tr>
+      <tr><td><b>取 Bearer token</b></td><td><code>auth:sanctum</code> 隐式</td><td><code>OAuth2PasswordBearer</code></td></tr>
+      <tr><td><b>校验并注入用户</b></td><td><code>auth()-&gt;user()</code></td><td><code>Depends(get_current_user)</code></td></tr>
+      <tr><td><b>保护一条路由</b></td><td><code>middleware('auth:sanctum')</code></td><td><code>Depends(get_current_user)</code></td></tr>
+      <tr><td><b>保护一组路由</b></td><td><code>middleware()->group()</code></td><td><code>APIRouter(dependencies=)</code></td></tr>
+      <tr><td><b>拒绝访问</b></td><td><code>abort(401)</code></td><td><code>raise HTTPException(401)</code></td></tr>
+      <tr><td><b>交互式联调</b></td><td>Postman / 手填头</td><td><code>/docs</code> Authorize 按钮</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">认证心智没变：<br><span class="hl">登录发钥匙 → 带钥匙敲门 → 看门人放行</span>。<br>Laravel 用中间件，FastAPI 用依赖。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：Sanctum 负责签发/校验 API token；<code>auth:sanctum</code> 中间件保护路由、<code>auth()-&gt;user()</code> 取当前用户 —— 官方文档 Authentication / Sanctum 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>fastapi.security.OAuth2PasswordBearer</code> 从请求取 Bearer；<code>Depends(get_current_user)</code> 校验并注入用户 —— 官方文档 Security 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep11.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep10/"><div class="lbl">← 上一期</div><div class="ttl">EP10 · 中间件</div></a><a class="next" href="../ep12/"><div class="lbl">下一期 →</div><div class="ttl">EP12 · 测试</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP11 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

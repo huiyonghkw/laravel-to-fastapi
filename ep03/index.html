@@ -1,0 +1,178 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP03 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP03 · 控制器 vs 路径操作</span>
+    <h1>逻辑<span class="k">放哪</span>这件事</h1>
+    <p class="lead">Laravel 把一批接口收进一个 <code>Controller</code> 类；FastAPI 直接写函数，函数就是「路径操作」。同一个 endpoint，左边是类里的一个方法，右边是装饰器下的一个 <code>def</code>。本篇讲清这层「包装」差异。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边最终都是<b>「一个 endpoint = 一段处理逻辑」</b>。差别只在「这段逻辑以什么形态存在」：Laravel 把它塞进 <code>Controller</code> 类的方法；FastAPI 让它独立成一个函数，再用 <code>APIRouter</code> 把同类函数归一组——<b>这组函数就等于 Laravel 的一个 Controller</b>。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的控制器</div><ul>
+        <li>逻辑收进 <code>UserController</code> 类</li>
+        <li>每个接口 = 类里一个 <code>public function</code></li>
+        <li>路由用 <code>[Controller::class, '方法名']</code> 指过去</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的路径操作</div><ul>
+        <li>逻辑就是普通函数，<b>没有类包装</b></li>
+        <li>每个接口 = 一个被装饰的 <code>def</code></li>
+        <li>用 <code>APIRouter</code> 把一组函数收在一起</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「类的方法」，FastAPI 是「独立函数」</b>。控制器只是组织习惯，FastAPI 用 router 达到同等组织力。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">整体形态：类 vs 函数组</span></h2>
+    <p>同一个「用户模块」，左右的组织方式。右 FastAPI 的 <code>@router.*</code> 三个函数，正好等价于左 Laravel 的 <code>UserController</code> 三个方法。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// app/Http/Controllers/Api/UserController.php</span>
+<span class="k">class</span> UserController <span class="k">extends</span> Controller
+{
+    <span class="cm">// 列表 → 对应 list_users</span>
+    <span class="k">public function</span> show(<span class="k">int</span> $user_id) {
+        <span class="k">return</span> response()->json([
+            <span class="s">'user_id'</span> => $user_id]);
+    }
+    <span class="cm">// 新建 → 对应 store_user</span>
+    <span class="k">public function</span> store(Request $request) {
+        $data = $request->validate([...]);
+        <span class="k">return</span> response()->json(
+            [<span class="s">'received'</span> => $data]);
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep03.py</span>
+router = APIRouter()  <span class="cm"># ← 这组函数 = 一个 Controller</span>
+
+<span class="k">@router</span>.get(<span class="s">"/users"</span>)
+<span class="k">def</span> list_users():
+    <span class="k">return</span> {<span class="s">"users"</span>: []}
+
+<span class="k">@router</span>.get(<span class="s">"/users/{uid}"</span>)
+<span class="k">def</span> show_user(uid: <span class="k">int</span>):
+    <span class="k">return</span> {<span class="s">"uid"</span>: uid}
+
+<span class="k">@router</span>.post(<span class="s">"/users"</span>)
+<span class="k">def</span> store_user():
+    <span class="k">return</span> {<span class="s">"created"</span>: <span class="k">True</span>}</div></div>
+    </div>
+    <div class="note">注意左 Laravel 的 <code>show</code> 收标量参数，右 FastAPI 的 <code>show_user</code> 用类型提示 <code>uid: int</code> 自动转换——这是 EP02 讲过的路径参数，这里套在「函数即 handler」的壳里。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">路由怎么指过去</span></h2>
+    <p>Laravel 在路由文件里用字符串方法名「点名」控制器方法；FastAPI 不需要中间一层——装饰器已经把 URL 和函数绑死了。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php（EP03 段）</span>
+<span class="k">Route</span>::get(<span class="s">'/users'</span>,
+  [UserController::<span class="k">class</span>, <span class="s">'index'</span>]);
+<span class="k">Route</span>::get(<span class="s">'/users/{uid}'</span>,
+  [UserController::<span class="k">class</span>, <span class="s">'show'</span>]);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 装饰器即绑定，无中间层</span>
+<span class="k">@router</span>.get(<span class="s">"/users"</span>)
+<span class="k">def</span> list_users():
+    <span class="k">return</span> {<span class="s">"users"</span>: []}
+
+<span class="k">@router</span>.get(<span class="s">"/users/{uid}"</span>)
+<span class="k">def</span> show_user(uid: <span class="k">int</span>):
+    <span class="k">return</span> {<span class="s">"uid"</span>: uid}</div></div>
+    </div>
+    <div class="note">左 Laravel 的 <code>'index'</code> / <code>'show'</code> 是<b>字符串方法名</b>，拼错会运行报 <code>MethodNotAllowed</code> / <code>NotFound</code>；右 FastAPI 的 <code>list_users</code> / <code>show_user</code> 只是函数名，<b>真正决定 URL 的是装饰器参数</b>，函数叫什么无所谓。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">写操作 + 请求体</span></h2>
+    <p>POST 新建用户：Laravel 在控制器里拿 <code>Request</code> 对象并 <code>validate</code>；FastAPI 这边先放一个最简骨架（Pydantic 校验留到 EP05 细讲）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::post(<span class="s">'/users'</span>,
+  [UserController::<span class="k">class</span>, <span class="s">'store'</span>]);
+
+<span class="cm">// UserController::store</span>
+<span class="k">public function</span> store(Request $request) {
+    $data = $request->validate([
+        <span class="s">'name'</span>  => <span class="s">'required|string'</span>,
+        <span class="s">'email'</span> => <span class="s">'required|email'</span>,
+    ]);
+    <span class="k">return</span> response()->json(
+        [<span class="s">'received'</span> => $data]);
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># routes/api.php 等价于：</span>
+<span class="k">@router</span>.post(<span class="s">"/users"</span>)
+<span class="k">def</span> store_user():
+    <span class="cm"># 校验与请求体见 EP05（Pydantic）</span>
+    <span class="k">return</span> {<span class="s">"created"</span>: <span class="k">True</span>}</div></div>
+    </div>
+    <div class="note">左边 <code>$request->validate([...])</code> 是「方法内部校验」；右边把同样的事交给 EP05 的 Pydantic 模型——FastAPI 的惯用法是「函数签名即契约」，比在方法体里写规则更靠前。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 硬套 Controller 类</b>：FastAPI 没有「控制器」这层概念。新手常写一个 <code>class UserController</code> 再 <code>@router.get</code> 挂方法——没必要。一组函数 + 一个 <code>APIRouter</code> 就是最地道的写法。</div>
+    <div class="note"><b>坑 2 · 方法名拼错</b>：<code>[UserController::class, 'indx']</code> 这种拼写错误只有运行时才炸；FastAPI 没有字符串方法名，装饰器直接绑定，少一层出错面。</div>
+    <div class="note"><b>坑 3 · 参数名不对应</b>：Laravel 路由 <code>{uid}</code> 和控制器参数 <code>$user_id</code> 名字可以不同（按位置注入）；FastAPI 必须同名——函数参数 <code>uid</code> 对应路径 <code>{uid}</code>，写错名会 422 / 拿不到值。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 /ep03/users（列表）与 /ep03/users/1（详情）</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep03.py</code> 跑起来（主程序 <code>include_router(ep03.router, prefix='/ep03')</code>）：<code>/ep03/users</code> 返回空列表；<code>/ep03/users/1</code> 把 <code>1</code> 自动转成 int 返回。打开 <code>/docs</code> 能看到 users 分组。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给「用户模块」加一个更新接口 <code>PUT /ep03/users/{uid}</code>，左右各补一处：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep03.py 中加：</span>
+<span class="k">@router</span>.put(<span class="s">"/users/{uid}"</span>)
+<span class="k">def</span> update_user(uid: <span class="k">int</span>):
+    <span class="k">return</span> {<span class="s">"uid"</span>: uid,
+            <span class="s">"updated"</span>: <span class="k">True</span>}</div></div>
+    <div class="note">Laravel 侧则在 <code>UserController</code> 加一个 <code>public function update(int $uid)</code>，并在 <code>routes/api.php</code> 加一行 <code>Route::put('/users/{uid}', [UserController::class, 'update'])</code>。做完你会发现：两边都是「加一个方法 + 加一条路由」，组织结构完全同构，只是左在类里、右在函数里。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>组织一批接口</b></td><td><code>Controller</code> 类</td><td><code>APIRouter</code> + 函数组</td></tr>
+      <tr><td><b>声明一个 endpoint</b></td><td><code>public function</code></td><td><code>@router.get(...)</code> 装饰函数</td></tr>
+      <tr><td><b>路由指过去</b></td><td><code>[Ctrl::class, 'method']</code></td><td>装饰器直接绑定（无需指名）</td></tr>
+      <tr><td><b>路径参数</b></td><td><code>{uid}</code> + 方法标量</td><td><code>{uid}</code> + <code>uid: int</code></td></tr>
+      <tr><td><b>拿请求体/校验</b></td><td><code>Request</code> + <code>validate()</code></td><td>函数参数（Pydantic，见 EP05）</td></tr>
+      <tr><td><b>挂回主应用</b></td><td>路由文件自动加载</td><td><code>include_router()</code></td></tr>
+      <tr><td><b>自动文档</b></td><td>无</td><td><code>/docs</code> 自动生成</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">控制器不是「能力」，是「组织习惯」：<br><span class="hl">Laravel 把逻辑收进类，FastAPI 把逻辑摊成函数。</span><br>心智一样，落笔不同。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：控制器为 <code>app/Http/Controllers/*</code> 下的类，路由用 <code>[Controller::class, 'method']</code> 指向类方法 —— 官方文档 Controllers / Routing 章节</li>
+        <li><b>FastAPI 0.140.13</b>：「路径操作」即被装饰的普通函数；用 <code>APIRouter</code> 组织一组函数，<code>include_router</code> 挂载 —— 官方文档 Path Operations / Bigger Applications</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep03.py</code> 与 <code>laravel/app/Http/Controllers/Api/UserController.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep02/"><div class="lbl">← 上一期</div><div class="ttl">EP02 · 路由</div></a><a class="next" href="../ep04/"><div class="lbl">下一期 →</div><div class="ttl">EP04 · 请求与响应</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP03 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

@@ -1,0 +1,156 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP12 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP12 · 测试</span>
+    <h1>让代码<span class="k">自己证明自己</span></h1>
+    <p class="lead">测试就是「用一段程序去请求接口、再断言结果」。Laravel 用 <code>Pest</code>/<code>PHPUnit</code> 的内置 HTTP 测试；FastAPI 用 <code>pytest</code> + <code>TestClient</code>（基于 httpx）。本篇把三种典型断言一一对照，看完就能给项目加测试。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边测试的本质一样：<b>构造一个「假的」请求发到应用，再对响应做断言</b>。Laravel 把请求伪装进框架内部（<code>$this->get()</code>）；FastAPI 用 <code>TestClient</code> 套一层 httpx，对 <code>app</code> 对象发真实 HTTP 语义的请求——但<b>不真正起端口、不发网络</b>。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的测试</div><ul>
+        <li>测试继承 <code>TestCase</code>（PHPUnit）</li>
+        <li><code>$this->get()/post()</code> 伪装请求</li>
+        <li><code>assertOk()/assertJson()/assertStatus()</code> 断言</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的测试</div><ul>
+        <li><code>pytest</code> 函数即用例</li>
+        <li><code>TestClient(app)</code> 当浏览器发请求</li>
+        <li><code>r.status_code/r.json()</code> + <code>assert</code> 断言</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「框架内置 HTTP 测试」，FastAPI 是「pytest + TestClient 套 httpx」</b>。同一个心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">最简单：GET 断言 200 + JSON</span></h2>
+    <p>请求一个公开端点，断言状态码 200、且返回的 JSON 字段符合预期。左右一一对应。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · Pest</div></div><div class="sc"><span class="cm">// tests/Feature/HelloTest.php</span>
+test(<span class="s">'hello 返回 200'</span>, <span class="k">function</span> () {
+    <span class="k">$this</span>->get(<span class="s">'/api/hello'</span>)
+         ->assertOk()
+         ->assertJson([
+             <span class="s">'framework'</span> => <span class="s">'Laravel'</span>,
+         ]);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · pytest</div></div><div class="sc"><span class="cm"># fastapi/tests/test_ep12.py</span>
+<span class="k">def</span> test_hello():
+    r = client.get(<span class="s">"/ep00/hello"</span>)
+    <span class="k">assert</span> r.status_code == <span class="k">200</span>
+    <span class="k">assert</span> r.json()[<span class="s">"framework"</span>] == <span class="s">"FastAPI"</span></div></div>
+    </div>
+    <div class="note">Laravel 用链式断言 <code>->assertOk()->assertJson()</code>；FastAPI 用 Python 原生 <code>assert</code> 直接比对。<code>assertJson</code> 是<b>宽松匹配</b>（只校验给定键），<code>r.json()["framework"]</code> 是<b>精确取值</b>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">校验失败：断言 422</span></h2>
+    <p>POST 一个缺字段的 body，两边都应拿到 422（校验未通过）。对照 EP05 的 Pydantic / Form Request。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · Pest</div></div><div class="sc"><span class="cm">// 缺 email → 422</span>
+test(<span class="s">'缺字段返回 422'</span>, <span class="k">function</span> () {
+    <span class="k">$this</span>->post(<span class="s">'/users'</span>, [])
+         ->assertStatus(<span class="k">422</span>);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · pytest</div></div><div class="sc"><span class="cm"># 缺 email → 422</span>
+<span class="k">def</span> test_validate():
+    r = client.post(<span class="s">"/ep05/users"</span>,
+                    json={<span class="s">"name"</span>: <span class="s">"a"</span>})
+    <span class="k">assert</span> r.status_code == <span class="k">422</span></div></div>
+    </div>
+    <div class="note">Laravel 端点是 <code>POST /api/users</code>（api.php 里路由被 <code>RouteServiceProvider</code> 自动加 <code>/api</code> 前缀）；FastAPI 是 <code>POST /ep05/users</code>。两边校验失败都返回 <b>422</b>，断言写法同构。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">容器/依赖注入端点</span></h2>
+    <p>一个走容器或 <code>Depends</code> 注入的端点（对照 EP09），断言它真的返回了注入后拼出的结果。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · Pest</div></div><div class="sc"><span class="cm">// 容器解析链注入的端点</span>
+test(<span class="s">'db-url 走容器注入'</span>, <span class="k">function</span> () {
+    <span class="k">$this</span>->get(<span class="s">'/db-url'</span>)
+         ->assertOk()
+         ->assertJsonPath(<span class="s">'url'</span>,
+             fn ($v) => str_starts_with($v, <span class="s">'db://'</span>));
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · pytest</div></div><div class="sc"><span class="cm"># Depends 注入的端点</span>
+<span class="k">def</span> test_di_nested():
+    r = client.get(<span class="s">"/ep09/db-url"</span>)
+    <span class="k">assert</span> r.status_code == <span class="k">200</span>
+    <span class="k">assert</span> r.json()[<span class="s">"url"</span>].startswith(<span class="s">"db://"</span>)</div></div>
+    </div>
+    <div class="note">依赖注入在<b>测试里自动生效</b>——你不需要为测试手动装配容器/FastAPI 的 <code>Depends</code> 链，直接请求即可。Laravel 用 <code>assertJsonPath</code> + 闭包断言；FastAPI 用 <code>str.startswith()</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 测试不是真进程，但要保证独立</b>：每个用例应<b>互不污染</b>。Laravel 用 <code>RefreshDatabase</code> 事务回滚；FastAPI 用 <code>pytest fixture</code> 重建 <code>TestClient</code> / 独立 DB。别让一个测试的副作用泄漏到下一个。</div>
+    <div class="note"><b>坑 2 · TestClient 不发真实网络</b>：<code>TestClient(app)</code> 在进程内直接调 ASGI app，<b>不经过 TCP 端口</b>，也<b>不触发中间件栈之外的真实 HTTP</b>。想测真实端口要用 <code>httpx</code> 另起服务，别误以为 TestClient 真发了请求。</div>
+    <div class="note"><b>坑 3 · 环境与配置隔离</b>：测试要跑在独立环境（<code>.env.testing</code> / <code>PYTHONPATH</code> + <code>conftest.py</code>），避免误连生产 DB。FastAPI 侧注意 <code>from app.main import app</code> 的路径，跑测试时要在仓库根目录或正确设置 <code>PYTHONPATH</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="steps">
+      <div class="s"><span class="n">1</span><span class="t">装依赖</span></div>
+      <div class="s"><span class="n">2</span><span class="t">起测试客户端 / 框架引导</span></div>
+      <div class="s"><span class="n">3</span><span class="t">运行并看绿</span></div>
+    </div>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">pytest fastapi/tests/test_ep12.py</span>
+<span class="ok">  → 3 passed</span>
+<span class="cm">  Laravel 侧等价：php artisan test  （或 ./vendor/bin/pest）</span></div></div>
+    <div class="note">FastAPI 侧 <code>test_ep12.py</code> 顶部已 <code>client = TestClient(app)</code>，直接 <code>pytest</code> 即可；Laravel 侧 <code>php artisan test</code> 会自动引导框架并跑 <code>tests/Feature/*</code>。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>/ep00/hello</code> 加一个「只断言 200」的极简测试（Laravel 侧对应 <code>/api/hello</code>）：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 test_ep12.py 里加：</span>
+<span class="k">def</span> test_hello_status_only():
+    r = client.get(<span class="s">"/ep00/hello"</span>)
+    <span class="k">assert</span> r.status_code == <span class="k">200</span></div></div>
+    <div class="note">Laravel 侧同理：<code>test('hello 200', fn () => $this->get('/api/hello')->assertOk());</code>。做完你会发现：测试就是「发请求 + 断言」，和写业务代码完全不同——它只负责<b>验证</b>，不动手改东西。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>发 GET 断言 200</b></td><td><code>$this->get('/api/hello')->assertOk()</code></td><td><code>r = client.get("/ep00/hello"); assert r.status_code == 200</code></td></tr>
+      <tr><td><b>断言 JSON 字段</b></td><td><code>->assertJson(['k'=&gt;'v'])</code></td><td><code>assert r.json()["k"] == "v"</code></td></tr>
+      <tr><td><b>断言状态码</b></td><td><code>->assertStatus(422)</code></td><td><code>assert r.status_code == 422</code></td></tr>
+      <tr><td><b>测试客户端</b></td><td>内置 HTTP 测试（PHPUnit）</td><td><code>TestClient(app)</code>（基于 httpx）</td></tr>
+      <tr><td><b>运行测试</b></td><td><code>php artisan test</code> / <code>pest</code></td><td><code>pytest fastapi/tests/test_ep12.py</code></td></tr>
+      <tr><td><b>测试隔离</b></td><td><code>RefreshDatabase</code> 回滚</td><td><code>pytest fixture</code> 重建 client/DB</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">测试心智没变：<br><span class="hl">发请求 → 断言结果</span>。<br>Laravel 用框架内置伪装，FastAPI 用 TestClient 套 httpx。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>TestCase</code> 提供 <code>get/post</code> 伪装请求与 <code>assertOk/assertJson/assertStatus</code> 断言；Pest 以 <code>test()</code> 闭包编写 —— 官方文档 HTTP Tests / Testing 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>fastapi.testclient.TestClient</code>（基于 httpx）对 app 发请求，配合 <code>pytest</code> 用原生 <code>assert</code> 断言 —— 官方文档 Testing 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/tests/test_ep12.py</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep11/"><div class="lbl">← 上一期</div><div class="ttl">EP11 · 认证授权</div></a><a class="next" href="../ep13/"><div class="lbl">下一期 →</div><div class="ttl">EP13 · 异步与队列</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP12 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

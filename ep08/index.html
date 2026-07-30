@@ -1,0 +1,179 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP08 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP08 · 事务与关联</span>
+    <h1>要么全成，要么全<span class="k">回滚</span></h1>
+    <p class="lead">「下订单」要同时写订单和订单项，<b>两步必须绑成一步</b>——这就是事务。顺带把「关联数据怎么一起查」讲清。Laravel 用 <code>DB::transaction</code>，FastAPI 用 <code>with db.begin()</code>；关联两边都靠「预加载」避免 N+1。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>事务就是<b>「一组写操作，要么全成功提交，要么任一步失败就整体回滚」</b>。关联查询则是<b>「主表 + 从表，一次取回，不要一条条查」</b>。两个心智，两边一一对应。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的事务 / 关联</div><ul>
+        <li><code>DB::transaction(fn () =&gt; ...)</code> 闭包包住写操作</li>
+        <li>闭包里抛异常 → 自动 rollback</li>
+        <li>关联查询用 <code>Model::with('items')</code> 预加载</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的事务 / 关联</div><ul>
+        <li><code>with db.begin():</code> 上下文管理器包住写操作</li>
+        <li>块内抛异常 → 退出时自动 rollback</li>
+        <li>关联用 SQLAlchemy <code>relationship</code> + <code>joinedload</code> 预加载</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 用闭包包裹事务，FastAPI 用 <code>with</code> 块包裹事务</b>。同一个心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">事务：写订单</span></h2>
+    <p>「开事务 → 写订单 → 提交；中途报错就回滚」。左 Laravel 把代码塞进 <code>DB::transaction</code> 闭包，右 FastAPI 把代码塞进 <code>with db.begin():</code> 块。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php — /orders</span>
+<span class="k">return</span> \Illuminate\Support\Facades\DB::transaction(
+  <span class="k">function</span> () {
+    $order = \App\Models\Order::create([
+      <span class="s">'amount'</span> => 100,
+    ]);
+    <span class="k">return</span> [<span class="s">'id'</span> => $order->id,
+            <span class="s">'amount'</span> => $order->amount];
+    <span class="cm">// 抛异常 → 自动 rollback</span>
+  });</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep08.py — POST /orders</span>
+<span class="k">@router</span>.post(<span class="s">"/orders"</span>)
+<span class="k">def</span> create_order(db=Depends(get_db)):
+    <span class="k">with</span> db.begin():            <span class="cm"># 事务开始</span>
+        o = Order(amount=100)
+        db.add(o)
+        <span class="cm"># 块内抛异常 → 退出自动 rollback</span>
+    <span class="k">return</span> {<span class="s">"id"</span>: o.id,
+            <span class="s">"amount"</span>: o.amount}</div></div>
+    </div>
+    <div class="note">两边都是<b>「成功自动提交，异常自动回滚」</b>。FastAPI 的 <code>with db.begin():</code> 进入就 <code>BEGIN</code>，离开就 <code>COMMIT</code>；若离开时带着未捕获异常，则 <code>ROLLBACK</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">关联查询：订单 + 订单项</span></h2>
+    <p>查订单时连同它的订单项一起取回，<b>不要在循环里逐条查</b>（N+1）。左 Laravel 用 <code>with('items')</code>，右 FastAPI 用 <code>relationship</code> + <code>joinedload</code>。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// Eloquent 预加载从表</span>
+$orders = \App\Models\Order::<span class="k">with</span>(<span class="s">'items'</span>)
+    -&gt;get();
+<span class="k">foreach</span> ($orders <span class="k">as</span> $o) {
+    <span class="cm">// 已随主表一次取回，不再查库</span>
+    $o-&gt;items;
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># SQLAlchemy 预加载从表</span>
+<span class="k">from</span> sqlalchemy <span class="k">import</span> select
+<span class="k">from</span> sqlalchemy.orm <span class="k">import</span> joinedload
+stmt = select(Order).options(
+    joinedload(Order.items))
+orders = db.execute(stmt).unique().scalars().all()
+<span class="k">for</span> o <span class="k">in</span> orders:
+    o.items   <span class="cm"># 已在 JOIN 里取回</span></div></div>
+    </div>
+    <div class="note"><code>with('items')</code> ≈ <code>joinedload(Order.items)</code>，都是<b>一次性把关联数据 JOIN/批量取回</b>。不做预加载时，每条订单访问 <code>items</code> 都会再发一条 SQL，就是经典的 N+1。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">事务里写关联（组合）</span></h2>
+    <p>真实下单：<b>同一事务里写订单 + 写订单项</b>，任一步失败整体回滚。这是事务和关联的交汇点。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 一个事务写两张表</span>
+<span class="k">return</span> DB::transaction(<span class="k">function</span> () {
+    $order = Order::create([
+        <span class="s">'amount'</span> => 100]);
+    $order-&gt;items()-&gt;create([
+        <span class="s">'sku'</span>   => <span class="s">'A-1'</span>,
+        <span class="s">'qty'</span>   => 2]);
+    <span class="k">return</span> $order-&gt;load(<span class="s">'items'</span>);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 一个事务写两张表</span>
+<span class="k">with</span> db.begin():
+    o = Order(amount=100)
+    db.add(o)
+    db.flush()              <span class="cm"># 拿到 o.id</span>
+    db.add(OrderItem(
+        order_id=o.id,
+        sku=<span class="s">'A-1'</span>, qty=2))
+<span class="k">return</span> o            <span class="cm"># 提交后返回</span></div></div>
+    </div>
+    <div class="note">关键差异：SQLAlchemy 需要先 <code>db.flush()</code> 拿到主表自增 id，才能填从表的<code>order_id</code>；Eloquent 的 <code>$order-&gt;items()-&gt;create()</code> 内部已帮你做掉了这步。其余逻辑完全同构。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 忘了 flush 就拿 id</b>：FastAPI 里 <code>db.add(o)</code> 后 id 还没生成，直接读 <code>o.id</code> 会得到 <code>None</code>。先 <code>db.flush()</code>（仍在事务内）再取 id 写从表。</div>
+    <div class="note"><b>坑 2 · 异常被「吃掉」不回滚</b>：<code>with db.begin():</code> 只在<b>未捕获异常</b>时回滚。若你在块里 <code>try/except</code> 吞掉了异常，事务会照常提交。要回滚就把异常再抛出，或手动 <code>db.rollback()</code>。</div>
+    <div class="note"><b>坑 3 · 关联忘了预加载</b>：<code>o.items</code> 在循环里逐条触发查询就是 N+1。写查询时顺手加 <code>with('items')</code> / <code>joinedload(Order.items)</code>，和 Laravel 习惯一致。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/laravel-to-fastapi/fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  找到 POST /ep08/orders，点 Try it out</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -X POST http://127.0.0.1:8000/ep08/orders -H 'Content-Type: application/json' -d '{"amount":100,"sku":"A-1"}'</span>
+<span class="ok">  → {"id":1,"amount":100,"rolled_back":false}</span>
+<span class="cm">  回滚演示：把 body 里 fail 设为 true</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep08.py</code> 跑起来：<code>POST /ep08/orders</code> 在 <code>with db.begin():</code> 里写一条订单，提交后返回 id。想看回滚，就把 <code>db.add(o)</code> 后面故意抛个异常，再查库会发现什么都没写进去。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>把「对照③」的组合事务补完整：在 <code>ep08.py</code> 的 <code>create_order</code> 里加一行 <code>OrderItem</code>，并加一个读接口返回订单及其订单项。</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在事务块内补写订单项：</span>
+db.add(OrderItem(order_id=o.id,
+                 sku=<span class="s">'A-1'</span>, qty=2))
+
+<span class="cm"># 加一个读接口（带预加载）</span>
+<span class="k">@router</span>.get(<span class="s">"/orders/{oid}"</span>)
+<span class="k">def</span> get_order(oid: <span class="k">int</span>,
+               db=Depends(get_db)):
+    stmt = select(Order).options(
+        joinedload(Order.items)
+    ).where(Order.id == oid)
+    <span class="k">return</span> db.execute(stmt).unique().scalars().first()</div></div>
+    <div class="note">做完你会发现：事务保证「订单+订单项」要么都写入、要么都回滚；读接口加 <code>joinedload</code> 一次取回关联——和 Laravel <code>with('items')</code> 完全同构。难点不在 ORM，在「把写操作关进同一个事务块」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>开一个事务</b></td><td><code>DB::transaction(fn () =&gt; ...)</code></td><td><code>with db.begin():</code></td></tr>
+      <tr><td><b>异常自动回滚</b></td><td>闭包抛异常即回滚</td><td>块内未捕获异常即回滚</td></tr>
+      <tr><td><b>拿到自增 id</b></td><td><code>create()</code> 直接返回模型</td><td>先 <code>db.flush()</code> 再取 <code>o.id</code></td></tr>
+      <tr><td><b>预加载关联</b></td><td><code>Model::with('items')</code></td><td><code>joinedload(Order.items)</code></td></tr>
+      <tr><td><b>写主表+从表</b></td><td><code>$o-&gt;items()-&gt;create([...])</code></td><td><code>add(主); flush(); add(从)</code></td></tr>
+      <tr><td><b>避免 N+1</b></td><td>总是带上 <code>with()</code></td><td>总是带上 <code>joinedload()</code></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">事务心智没变：<br><span class="hl">要么全成，要么全回滚</span>。<br>Laravel 包闭包，FastAPI 包 with 块。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>DB::transaction(Closure)</code> 闭包内异常自动回滚；Eloquent <code>Model::with('relation')</code> 预加载关联、<code>$model-&gt;relation()-&gt;create()</code> 写从表 —— 官方文档 Database Transactions / Eloquent Relationships 章节</li>
+        <li><b>FastAPI 0.140.13</b>：SQLAlchemy <code>with session.begin():</code> 上下文管理器等效事务（进入 BEGIN、正常 COMMIT、异常 ROLLBACK）；<code>relationship</code> + <code>joinedload</code> 预加载关联避免 N+1 —— 官方文档 SQLAlchemy / FastAPI SQL (Relational) Databases 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep08.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep07/"><div class="lbl">← 上一期</div><div class="ttl">EP07 · 迁移</div></a><a class="next" href="../ep09/"><div class="lbl">下一期 →</div><div class="ttl">EP09 · 依赖注入进阶</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP08 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

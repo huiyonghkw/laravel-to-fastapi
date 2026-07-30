@@ -1,0 +1,178 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP14 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP14 · 部署</span>
+    <h1>上线的<span class="k">两种姿势</span></h1>
+    <p class="lead">Laravel 走 <b>Nginx + PHP-FPM</b>（进程池接 PHP）；FastAPI 走 <b>Uvicorn / Gunicorn + ASGI</b>（事件循环接 Python）。目标一样——把请求交给应用；差别在「谁来接管连接、进程怎么铺」。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边都不让应用直接裸奔在互联网上：前面放一个<b>反向代理</b>，后面放一个<b>应用服务器（进程模型）</b>。Laravel 的应用服务器是 PHP-FPM，FastAPI 的是 Uvicorn（常配 Gunicorn 管多进程）。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的部署</div><ul>
+        <li><b>Nginx</b> 反代 + 静态文件</li>
+        <li><b>PHP-FPM</b> 进程池执行 PHP（同步）</li>
+        <li><code>.env</code> 配环境，<code>php artisan</code> 管运维</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的部署</div><ul>
+        <li><b>Nginx / 云 LB</b> 反代 + 静态文件</li>
+        <li><b>Uvicorn</b> 跑 ASGI（单进程事件循环）</li>
+        <li><b>Gunicorn</b> 管多进程，拉 Uvicorn worker</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「Web 服务器 → FPM 进程池」，FastAPI 是「Web 服务器 → Uvicorn/Gunicorn 进程」</b>。前者同步多进程，后者异步事件循环 + 多进程。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">反代配置</span></h2>
+    <p>Laravel 用 Nginx 把 <code>.php</code> 交给 PHP-FPM（FastCGI）；FastAPI 用 Nginx 把请求转给 Uvicorn（HTTP）。左是真实 Nginx 示意，右是 FastAPI 侧同位置的 Nginx 段。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · Nginx</div></div><div class="sc"><span class="cm"># /etc/nginx/sites-enabled/app</span>
+server {
+    root <span class="dir">/var/www/html/public</span>;
+    location / {
+        <span class="k">try_files</span> $uri /index.php$is_args$args;
+    }
+    location ~ \.php$ {
+        <span class="k">fastcgi_pass</span> unix:/run/php/php-fpm.sock;
+        <span class="k">include</span> fastcgi_params;
+        <span class="k">fastcgi_param</span> SCRIPT_FILENAME
+            $document_root$fastcgi_script_name;
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Nginx</div></div><div class="sc"><span class="cm"># /etc/nginx/sites-enabled/app</span>
+server {
+    location / {
+        <span class="k">proxy_pass</span> http://127.0.0.1:8000;
+        <span class="k">proxy_set_header</span> Host $host;
+        <span class="k">proxy_set_header</span> X-Forwarded-For
+            $proxy_add_x_forwarded_for;
+    }
+}</div></div>
+    </div>
+    <div class="note">关键差异：Laravel 走 <b>FastCGI 协议</b>（<code>fastcgi_pass</code> 连 FPM socket）；FastAPI 走<b>普通 HTTP 反代</b>（<code>proxy_pass</code> 连 Uvicorn 端口）。两边静态文件都交给 Nginx 直接返回，不进应用。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">应用服务器 / 启动</span></h2>
+    <p>Laravel 由 PHP-FPM 常驻、Nginx 触发；FastAPI 由 Gunicorn 拉起多个 Uvicorn worker。右取自仓库真实 <code>fastapi/Dockerfile</code> 与 <code>ep14.py</code> 注释。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP-FPM</div></div><div class="sc"><span class="cm"># PHP-FPM 常驻（systemd 管）</span>
+<span class="k">systemctl</span> enable --now php-fpm
+<span class="cm"># 应用代码更新后无需重启 FPM</span>
+<span class="cm"># 队列等后台任务单独起 worker：</span>
+<span class="k">php</span> artisan queue:work
+<span class="cm"># 运维命令</span>
+<span class="k">php</span> artisan config:cache
+<span class="k">php</span> artisan route:cache</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Gunicorn</div></div><div class="sc"><span class="cm"># 生产多进程（Dockerfile CMD）</span>
+<span class="k">gunicorn</span> app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  -w ${WORKERS} -b ${HOST}:${PORT}
+<span class="cm"># 开发单进程热重载</span>
+<span class="k">uvicorn</span> app.main:app --reload
+<span class="cm"># ep14.py 暴露 /ep14/env 看运行环境</span></div></div>
+    </div>
+    <div class="note">PHP-FPM 自带进程池（<code>pm.max_children</code> 配并发）；FastAPI 这里用 <b>Gunicorn 当进程管理器</b>、<code>-w</code> 指定 worker 数，每个 worker 是一个 Uvicorn 事件循环。<code>-k UvicornWorker</code> 是桥接 ASGI 的关键。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">容器化打包</span></h2>
+    <p>Laravel 通常打包进带 Nginx+PHP-FPM 的基础镜像；FastAPI 用官方 Python 镜像 + Gunicorn。右是仓库真实 <code>fastapi/Dockerfile</code> 全文。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · 思路</div></div><div class="sc"><span class="cm"># 典型多阶段：composer 装依赖</span>
+<span class="cm"># 最终镜像同时跑 Nginx + FPM</span>
+<span class="cm"># （supervisor 或双进程）</span>
+<span class="cm"># COPY . /var/www/html</span>
+<span class="cm"># CMD ["nginx", "-g", "daemon off;"]</span>
+<span class="cm"># + php-fpm 同容器常驻</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Dockerfile</div></div><div class="sc"><span class="k">FROM</span> python:3.12-slim
+<span class="k">WORKDIR</span> /app
+<span class="k">COPY</span> requirements.txt .
+<span class="k">RUN</span> pip install --no-cache-dir \
+    -r requirements.txt
+<span class="k">COPY</span> app ./app
+<span class="k">ENV</span> HOST=0.0.0.0 PORT=8000 WORKERS=4
+<span class="k">EXPOSE</span> 8000
+<span class="cm"># 生产：Gunicorn + Uvicorn worker</span>
+<span class="k">CMD</span> gunicorn app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  -w ${WORKERS} -b ${HOST}:${PORT}</div></div>
+    </div>
+    <div class="note">FastAPI 镜像<b>只跑应用进程</b>（Uvicorn/Gunicorn），Nginx 一般在镜像外（宿主或前置 LB）。Laravel 常见「Nginx+FPM 同镜像」是历史习惯；在容器时代，前后分离部署更干净。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 生产别裸跑 Uvicorn</b>：<code>uvicorn --reload</code> 是开发用的单进程。生产要 <b>Gunicorn + UvicornWorker</b> 拉多进程（如 <code>-w 4</code>），否则并发上不去、进程挂了没人拉。</div>
+    <div class="note"><b>坑 2 · 静态文件别走 Uvicorn</b>：像 Laravel 把静态资源交给 Nginx 一样，FastAPI 的 <code>/static</code> 也要由 Nginx（或 CDN）直接返回，不要让 Python 进程去读磁盘——这是 Laravel 老手最容易惯性失误的点。</div>
+    <div class="note"><b>坑 3 · 健康检查与日志</b>：PHP-FPM 挂了 Nginx 直接 502；Uvicorn 同理。务必暴露一个轻量 <code>GET /ep14/env</code> 之类端点给 LB 探活，并把访问日志接到 Nginx / 容器 stdout，别只依赖框架内部日志。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker build -t lf-api -f fastapi/Dockerfile .</span>
+<span class="ok">  → 构建镜像（含 gunicorn 启动）</span>
+<span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker run -p 8000:8000 -e WORKERS=4 lf-api</span>
+<span class="ok">  → 容器起 4 个 Uvicorn worker</span>
+<span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">curl localhost:8000/ep14/env</span>
+<span class="ok">  → {"worker":"4","host":"0.0.0.0","port":"8000"}</span></div></div>
+    <div class="note">把仓库 <code>fastapi/</code> 跑起来：<code>/ep14/env</code> 直接返回当前 worker 数、host、port，确认「跑在哪」。Nginx 前置时把 <code>proxy_pass</code> 指向 8000 即可，静态资源交给 Nginx。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给容器加一个 Nginx 前置层，让静态资源不进 Python：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># nginx.conf 里加静态段（在 / 之前）</span>
+location <span class="dir">/static/</span> {
+    <span class="k">alias</span> <span class="dir">/app/static/</span>;  <span class="cm"># 直接返回</span>
+    expires 1d;
+}
+<span class="cm"># 再用 docker-compose 把 nginx:8000 → app:8000</span>
+<span class="cm"># 验证：curl 静态文件不再经 Uvicorn</span></div></div>
+    <div class="note">做完你会发现：FastAPI 的「Nginx 前置 + 静态直出」和 Laravel 的 <code>try_files</code> 心智完全一致——只是 Laravel 多一层 FastCGI 协议，FastAPI 是纯 HTTP 反代。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>反代协议</b></td><td>FastCGI（<code>fastcgi_pass</code>）</td><td>HTTP（<code>proxy_pass</code>）</td></tr>
+      <tr><td><b>应用服务器</b></td><td>PHP-FPM（同步进程池）</td><td>Uvicorn（ASGI 事件循环）</td></tr>
+      <tr><td><b>多进程管理</b></td><td>PHP-FPM <code>pm</code> 配置</td><td>Gunicorn <code>-w N</code></td></tr>
+      <tr><td><b>开发启动</b></td><td><code>php artisan serve</code></td><td><code>uvicorn ... --reload</code></td></tr>
+      <tr><td><b>生产启动</b></td><td>Nginx + FPM 常驻</td><td><code>gunicorn -k UvicornWorker</code></td></tr>
+      <tr><td><b>静态文件</b></td><td>Nginx 直出</td><td>Nginx / CDN 直出</td></tr>
+      <tr><td><b>健康检查</b></td><td>Nginx 探活 FPM</td><td>LB 探活 <code>/env</code> 类端点</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">部署心智没变：<br><span class="hl">反代在前，应用进程在后</span>。<br>Laravel 接 FPM，FastAPI 接 Uvicorn。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：官方部署文档推荐 Nginx + PHP-FPM，<code>.env</code> 配置、<code>php artisan</code> 运维、静态资源由 Web 服务器直出 —— 官方 docs deployment 章节</li>
+        <li><b>FastAPI 0.140.13</b>：官方部署文档推荐 Gunicorn + Uvicorn worker（<code>-k uvicorn.workers.UvicornWorker -w N</code>），Nginx 前置做反代与静态直出 —— 官方 docs Deployment / Gunicorn</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，FastAPI 侧完整版见仓库 <code>fastapi/Dockerfile</code> 与 <code>fastapi/app/ep14.py</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep13/"><div class="lbl">← 上一期</div><div class="ttl">EP13 · 异步与队列</div></a><a class="next" href="../ep15/"><div class="lbl">下一期 →</div><div class="ttl">EP15 · 收官：选型决策树</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP14 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

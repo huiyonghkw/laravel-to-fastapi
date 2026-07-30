@@ -1,0 +1,183 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP01 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP01 · 心智模型</span>
+    <h1>Laravel 帮你藏起来的事，<br><span class="k">FastAPI 让你写出来</span></h1>
+    <p class="lead">上手 FastAPI 不用学新语言，只换一层<span class="k">心智</span>：依赖注入、异步，Laravel 替你藏进容器，FastAPI 让你<span class="k">显式写出来</span>。本篇把这两点拆开讲透，看完直接能跑。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两个框架做的事一模一样——<b>把依赖送进函数、让请求并发</b>。差别只在：Laravel 帮你<b>自动</b>做（服务容器、PHP-FPM 同步）；FastAPI 让你<b>自己写</b>出来（<code>Depends</code>、<code>async</code>）。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的心智</div><ul>
+        <li>依赖？<b>构造器写个类型</b>，容器自动 new 好</li>
+        <li>并发？<b>不用管</b>，PHP-FPM 一个请求一个进程</li>
+        <li>你只管写业务逻辑</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的心智</div><ul>
+        <li>依赖？<b>用 Depends 声明</b>，框架送进来</li>
+        <li>并发？<b>async/await 自己标</b>，事件循环复用进程</li>
+        <li>控制权在你手里</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「你别管，我搞定」；FastAPI 是「你写清楚，我执行」。</b>概念没变，只是从隐式变显式。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">依赖注入（基础）</span></h2>
+    <p>都是「调用方声明要什么，框架把实例送进来」。左 Laravel 靠容器，右 FastAPI 靠 <code>Depends</code>。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// UserController.php</span>
+<span class="k">public function</span> show(
+    <span class="k">private</span> UserRepo $users  <span class="cm">// 容器自动注入</span>
+) {
+    <span class="k">return</span> $users->find($id);
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep01.py</span>
+<span class="k">def</span> get_db():
+    db = Session()
+    <span class="k">try</span>: <span class="k">yield</span> db      <span class="cm"># 请求期间注入</span>
+    <span class="k">finally</span>: db.close()
+
+<span class="k">@router</span>.get(<span class="s">'/user/{id}'</span>)
+<span class="k">def</span> get_user(db = Depends(get_db)):
+    <span class="k">return</span> db.find(id)      <span class="cm"># 直接拿到实例</span></div></div>
+    </div>
+    <div class="note"><code>Depends(get_db)</code> 和 Laravel 构造函数类型提示<b>同构</b>。<code>yield</code> 还能管生命周期——请求结束自动 <code>close</code>，等于容器的析构。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">依赖注入（嵌套 + 缓存）</span></h2>
+    <p>真实项目里依赖是链式的：A 依赖 B，B 依赖 C。两边都会<b>顺着链解析</b>，且<b>同一请求内只解析一次</b>（FastAPI 叫依赖缓存，Laravel 是请求级作用域）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 容器顺着构造器解析链</span>
+<span class="k">class</span> AuthService {}
+<span class="k">class</span> UserService {
+  <span class="k">public function</span> __construct(
+    <span class="k">private</span> AuthService $auth <span class="cm">// 容器先 new AuthService</span>
+  ) {}
+}
+<span class="cm">// 同一请求内 AuthService 只建一次</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># Depends 套 Depends</span>
+<span class="k">def</span> get_token(): <span class="k">return</span> <span class="s">'tok'</span>
+
+<span class="k">def</span> get_user(
+    t: str = Depends(get_token)
+): <span class="k">return</span> {<span class="s">'u'</span>: <span class="s">'alice'</span>}
+
+<span class="k">@router</span>.get(<span class="s">'/me'</span>)
+<span class="k">def</span> me(u = Depends(get_user)):
+    <span class="k">return</span> u   <span class="cm"># get_token 只跑一次</span></div></div>
+    </div>
+    <div class="note">Laravel 用 <code>App::singleton()</code> 控制「只建一次」；FastAPI 默认<b>同一请求内缓存依赖结果</b>，想每次都重建就加 <code>Depends(fn, use_cache=False)</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">同步 vs 异步（基础）</span></h2>
+    <p>这是 Laravel 老手最大的体感差：把函数标成 <code>async</code>、I/O 前加 <code>await</code>，进程就能在等待时去接别的请求。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 同步：等 DB 时进程空转</span>
+<span class="k">Route</span>::get(<span class="s">'/slow'</span>, <span class="k">function</span> () {
+    $data = DB::table(<span class="s">'x'</span>)->get(); <span class="cm">// 阻塞</span>
+    <span class="k">return</span> $data;
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 异步：等 I/O 时让出进程</span>
+<span class="k">@router</span>.get(<span class="s">'/slow'</span>)
+<span class="k">async def</span> slow():
+    data = <span class="k">await</span> db.fetch(<span class="s">'x'</span>)   <span class="cm"># 让出控制权</span>
+    <span class="k">return</span> data</div></div>
+    </div>
+    <div class="note">规则很简单：<b>碰到 I/O（查库、调接口、读文件）就 <code>await</code></b>；纯计算不用。一开始全写 <code>async def</code> 也不会错，FastAPI 兼容同步写法。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>对照④<span class="hl">异步（并发才显价值）</span></h2>
+    <p>异步真正的红利是<b>并发</b>：多个 I/O 一起等，而不是排队等。下面左是顺序（慢），右是 <code>asyncio.gather</code>（快一倍）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">顺序（慢）</div></div><div class="sc"><span class="cm"># 两次 I/O 排队，耗时相加</span>
+<span class="k">async def</span> batch_seq():
+    a = <span class="k">await</span> fetch(<span class="s">'A'</span>)  <span class="cm"># 先等 A</span>
+    b = <span class="k">await</span> fetch(<span class="s">'B'</span>)  <span class="cm"># 再等 B</span>
+    <span class="k">return</span> {<span class="s">'a'</span>: a, <span class="s">'b'</span>: b}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">并发（快）</div></div><div class="sc"><span class="cm"># 两个 I/O 同时发起</span>
+<span class="k">@router</span>.get(<span class="s">'/batch'</span>)
+<span class="k">async def</span> batch():
+    a, b = <span class="k">await</span> asyncio.gather(
+        fetch(<span class="s">'A'</span>), fetch(<span class="s">'B'</span>))
+    <span class="k">return</span> {<span class="s">'a'</span>: a, <span class="s">'b'</span>: b}</div></div>
+    </div>
+    <div class="note">Laravel 要走并发得靠队列（<code>dispatch</code> + Worker），FastAPI 在<b>单进程内</b>用 <code>asyncio.gather</code> 就能并发——这是 AI 流式响应快的关键。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 把阻塞写进 async</b>：<code>time.sleep</code>、同步 DB 驱动（pymysql）会卡死整个事件循环。I/O 一律用 <code>await</code> 的异步库（asyncpg / httpx / aiosqlite）。</div>
+    <div class="note"><b>坑 2 · 忘了 <code>Depends</code></b>：直接在函数里 <code>Session()</code> 也能跑，但你就失去了注入、缓存和测试时替换实现的便利——和 Laravel 里不写类型提示、自己 new 一样别扭。</div>
+    <div class="note"><b>坑 3 · 依赖缓存误以为每次都新建</b>：同一请求内 <code>Depends(get_db)</code> 默认只执行一次。需要每次新建（如写测试）就 <code>Depends(get_db, use_cache=False)</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">pip install fastapi uvicorn</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  自动 Swagger，对照 /ep01/* 看 DI 与 async</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep01.py</code> 跑起来，挨个试：<code>/ep01/user/1</code>（注入）、<code>/ep01/me</code>（嵌套依赖）、<code>/ep01/slow</code>（异步）、<code>/ep01/batch</code>（并发）。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>/ep01/me</code> 加一层「必须登录」：新建一个 <code>get_current_user</code>（已在示例里），再写一个受保护端点——</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep01.py 末尾加：</span>
+<span class="k">@router</span>.get(<span class="s">'/profile'</span>)
+<span class="k">def</span> profile(u = Depends(get_current_user)):
+    <span class="k">return</span> {<span class="s">'hello'</span>: u[<span class="s">'user'</span>]}</div></div>
+    <div class="note">做完你会发现：<b>这和 Laravel 里 <code>->middleware('auth')</code> 保护路由是同一件事</b>，只是 FastAPI 用 <code>Depends</code> 把「当前用户」显式注入，而不是藏在中间件里。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">09</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>注入依赖</b></td><td>构造器类型提示</td><td><code>Depends(fn)</code></td></tr>
+      <tr><td><b>嵌套依赖</b></td><td>容器解析链</td><td><code>Depends</code> 套 <code>Depends</code></td></tr>
+      <tr><td><b>请求内缓存</b></td><td>请求级作用域</td><td>依赖默认缓存一次</td></tr>
+      <tr><td><b>管生命周期</b></td><td>容器自动析构</td><td><code>yield</code> + <code>finally</code></td></tr>
+      <tr><td><b>写异步</b></td><td>（默认同步）</td><td><code>async def</code> + <code>await</code></td></tr>
+      <tr><td><b>并发 I/O</b></td><td>队列 + Worker</td><td><code>asyncio.gather</code></td></tr>
+      <tr><td><b>拿请求</b></td><td><code>Request $r</code></td><td><code>req: Request</code></td></tr>
+      <tr><td><b>返回 JSON</b></td><td><code>response()->json()</code></td><td><code>return {...}</code></td></tr>
+      <tr><td><b>自动文档</b></td><td>无</td><td><code>/docs</code> 自动生成</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">心智没变，只是从<span class="hl">隐式</span>变<span class="hl">显式</span>。<br>Laravel 你别管，FastAPI 你写清。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：服务容器自动解析，构造器类型提示即注入；<code>App::singleton()</code> 控制单例 —— 官方文档 container 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>Depends</code> 用于依赖注入，支持嵌套与<b>请求内缓存</b>（<code>use_cache=False</code> 关闭）；<code>yield</code> 管理子依赖生命周期；<code>async def</code> 走 ASGI 并发 —— 官方文档 Dependencies / Async</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep01.py</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep00/"><div class="lbl">← 上一期</div><div class="ttl">EP00 · 世界观与请求生命周期</div></a><a class="next" href="../ep02/"><div class="lbl">下一期 →</div><div class="ttl">EP02 · 路由</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP01 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

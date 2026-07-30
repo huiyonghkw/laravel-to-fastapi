@@ -1,0 +1,220 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP15 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP15 · 收官</span>
+    <h1>选型<span class="k">决策树</span></h1>
+    <p class="lead">前面 14 期把两边的功能一一对照完了。最后一期不写新框架，而是把这棵「什么时候用哪个」的判断树收拢成一条可调用规则——对照你手上的项目特征，直接给建议。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两个框架没有高下，只有<b>合不合适</b>。判断标准不是「哪个更先进」，而是<b>「项目特征」对上「框架强项」</b>。Laravel 强在全栈一把梭，FastAPI 强在纯 API / 异步 / AI。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的适用场景</div><ul>
+        <li>要渲染页面 / 全栈 MVC / Blade</li>
+        <li>团队 PHP 储备深，交付要快</li>
+        <li>后台、CMS、电商、传统 Web 应用</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的适用场景</div><ul>
+        <li>纯后端 API / 微服务 / 流式响应</li>
+        <li>高并发 I/O、WebSocket、异步红利</li>
+        <li>AI / ML 服务、数据科学接口</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「全栈瑞士军刀」，FastAPI 是「API 与 AI 的手术刀」</b>。先看项目长什么样，再选工具。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">决策入口（路由）</span></h2>
+    <p>两边都在 <code>/advise</code> 暴露一个 POST 端点，收一组项目特征、返回一个选型结论。左 Laravel 在 <code>routes/api.php</code> 闭包里收口，右 FastAPI 用路径操作函数。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php — EP15 决策入口</span>
+<span class="k">Route</span>::post(<span class="s">'/advise'</span>, <span class="k">function</span> (
+    <span class="k">\Illuminate\Http\Request</span> $r) {
+    <span class="cm">// 真实项目用 Policy/Service 计算</span>
+    <span class="cm">// 此处给入口骨架</span>
+    <span class="k">return</span> [<span class="s">'pick'</span> =>
+        $r->input(<span class="s">'has_frontend'</span>)
+          ? <span class="s">'Laravel'</span> : <span class="s">'FastAPI'</span>];
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep15.py</span>
+<span class="k">from</span> fastapi <span class="k">import</span> APIRouter
+<span class="k">from</span> pydantic <span class="k">import</span> BaseModel
+
+router = APIRouter()
+
+<span class="k">@router</span>.post(<span class="s">"/advise"</span>)
+<span class="k">def</span> advise(p: ProjectProfile):
+    ...  <span class="cm"># 见对照③</span></div></div>
+    </div>
+    <div class="note">同一道门：<b>POST /advise</b> 收「项目特征」、吐「选型结论」。Laravel 把决策逻辑推到 Service/Policy 类（本页骨架只示意入口）；FastAPI 把决策逻辑直接写在路径操作函数里。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">项目特征（请求模型）</span></h2>
+    <p>判断树吃三类特征：是否要前端、是否要实时、团队是否熟 PHP。右边用 Pydantic 模型显式声明；左边靠 Request 取参（真实项目会用 Form Request 校验）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 取参（骨架，未含校验）</span>
+$hasFrontend = $r->boolean(<span class="s">'has_frontend'</span>);
+$needRealtime = $r->boolean(<span class="s">'need_realtime'</span>);
+$teamKnowsPhp = $r->boolean(<span class="s">'team_knows_php'</span>);
+<span class="cm">// 生产建议用 Form Request：</span>
+<span class="cm">// rules() 里 boolean 校验</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep15.py — 显式请求模型</span>
+<span class="k">class</span> ProjectProfile(BaseModel):
+    has_frontend: <span class="k">bool</span>   <span class="cm"># 是否要渲染页面/全栈</span>
+    need_realtime: <span class="k">bool</span>   <span class="cm"># 是否要流式/高并发 I/O</span>
+    team_knows_php: <span class="k">bool</span>  <span class="cm"># 团队 PHP 储备</span></div></div>
+    </div>
+    <div class="note">FastAPI 的 <code>ProjectProfile</code> 把<b>字段 + 类型 + 文档</b>一次说清，请求进来自动校验、自动进 <code>/docs</code>。Laravel 侧的等价物是 Form Request 类——只是本页骨架为求简洁直接取参。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">决策函数核心</span></h2>
+    <p>真正的判断树。右 FastAPI 是 <code>ep15.py</code> 里的真实 <code>advise()</code> 本体；左 Laravel 给出与之一一对应的同构实现（生产里会收进 Service 类，逻辑完全一致）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 与 ep15.py advise() 同构</span>
+<span class="k">if</span> ($hasFrontend) {
+    $pick = <span class="s">'Laravel'</span>;
+    $why  = <span class="s">'要渲染页面/全栈，Laravel 开箱即用'</span>;
+} <span class="k">elseif</span> ($needRealtime) {
+    $pick = <span class="s">'FastAPI'</span>;
+    $why  = <span class="s">'高并发 I/O / 流式响应，异步红利明显'</span>;
+} <span class="k">elseif</span> ($teamKnowsPhp) {
+    $pick = <span class="s">'Laravel'</span>;
+    $why  = <span class="s">'团队 PHP 熟，先用 Laravel 交付'</span>;
+} <span class="k">else</span> {
+    $pick = <span class="s">'FastAPI'</span>;
+    $why  = <span class="s">'纯后端 API，FastAPI 更轻更显式'</span>;
+}
+<span class="k">return</span> [<span class="s">'pick'</span> => $pick, <span class="s">'why'</span> => $why];</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep15.py — advise() 本体</span>
+<span class="k">if</span> p.has_frontend:
+    pick = <span class="s">"Laravel"</span>
+    why = <span class="s">"要渲染页面/全栈，Laravel 开箱即用"</span>
+<span class="k">elif</span> p.need_realtime:
+    pick = <span class="s">"FastAPI"</span>
+    why = <span class="s">"高并发 I/O / 流式响应，FastAPI 的异步红利明显"</span>
+<span class="k">elif</span> p.team_knows_php:
+    pick = <span class="s">"Laravel"</span>
+    why = <span class="s">"团队 PHP 熟，先用 Laravel 交付"</span>
+<span class="k">else</span>:
+    pick = <span class="s">"FastAPI"</span>
+    why = <span class="s">"纯后端 API，FastAPI 更轻更显式"</span>
+<span class="k">return</span> {<span class="s">"pick"</span>: pick, <span class="s">"why"</span>: why}</div></div>
+    </div>
+    <div class="note">判断顺序就是权重：<b>全栈 > 实时/异步 > 团队资产 > 默认轻量 API</b>。两边 if/elif 链逐字对应，心智完全相同，差别只在语法（<code>elseif</code> vs <code>elif</code>）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 以为有「银弹框架」</b>：没有哪个框架通吃。要渲染页面就 Laravel，要纯 API/AI 就 FastAPI。决策树先问「项目长什么样」，别先问「哪个更潮」。</div>
+    <div class="note"><b>坑 2 · 低估团队熟悉度权重</b>：决策树里 <code>team_knows_php</code> 排在实时之后、默认之前。团队会用、能快速交付，往往比「技术更优」更重要——尤其 deadline 紧的时候。</div>
+    <div class="note"><b>坑 3 · AI / ML 项目硬上 Laravel</b>：Python 生态（PyTorch、transformers、pandas）是 AI 项目的母语。要写推理服务、流式 token，FastAPI 几乎是无摩擦选择；用 PHP 反而处处绕路。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  POST /ep15/advise，body 如下：</span>
+{
+  <span class="s">"has_frontend"</span>: false,
+  <span class="s">"need_realtime"</span>: true,
+  <span class="s">"team_knows_php"</span>: true
+}
+<span class="ok">  → {"pick":"FastAPI","why":"高并发 I/O / 流式响应…"}</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep15.py</code> 跑起来：<code>need_realtime=true</code> 时即便团队熟 PHP 也优先 FastAPI（权重见对照③）。打开 <code>/docs</code> 能直接试 <code>/ep15/advise</code>，请求体字段由 <code>ProjectProfile</code> 自动生成。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06b</div>
+    <h2>交互决策<span class="hl">（本页可点）</span></h2>
+    <p>勾选项目画像，本地用与 <code>/ep15/advise</code> <b>同一套规则</b>算出建议（无需起服务）。想核对 API，再开 <code>/docs</code> 打一遍。</p>
+    <div class="note" id="advise-box" style="margin-top:12px">
+      <label style="display:block;margin:8px 0"><input type="checkbox" id="f_frontend"> 要渲染页面 / 全栈（has_frontend）</label>
+      <label style="display:block;margin:8px 0"><input type="checkbox" id="f_realtime"> 要流式 / 高并发 I/O（need_realtime）</label>
+      <label style="display:block;margin:8px 0"><input type="checkbox" id="f_php"> 团队熟 PHP（team_knows_php）</label>
+      <label style="display:block;margin:8px 0"><input type="checkbox" id="f_ai"> 要接 AI/ML 推理（need_ai）</label>
+      <button type="button" id="f_run" style="margin-top:12px;font-family:var(--code);font-weight:700;font-size:15px;padding:10px 18px;border-radius:10px;border:2px solid var(--border2);background:var(--flare);color:#fff;cursor:pointer">算一下</button>
+      <p id="f_out" style="margin-top:14px;font-size:18px;font-weight:800;color:var(--text)">点按钮出建议 →</p>
+    </div>
+    <script>
+    (function(){
+      function advise(p){
+        if(p.need_ai && !p.has_frontend) return {pick:'FastAPI', why:'AI/ML 推理，Python 生态无摩擦'};
+        if(p.has_frontend) return {pick:'Laravel', why:'要渲染页面/全栈，Laravel 开箱即用'};
+        if(p.need_realtime) return {pick:'FastAPI', why:'高并发 I/O / 流式响应，FastAPI 的异步红利明显'};
+        if(p.team_knows_php) return {pick:'Laravel', why:'团队 PHP 熟，先用 Laravel 交付'};
+        return {pick:'FastAPI', why:'纯后端 API，FastAPI 更轻更显式'};
+      }
+      document.getElementById('f_run').onclick=function(){
+        var p={
+          has_frontend:document.getElementById('f_frontend').checked,
+          need_realtime:document.getElementById('f_realtime').checked,
+          team_knows_php:document.getElementById('f_php').checked,
+          need_ai:document.getElementById('f_ai').checked
+        };
+        var r=advise(p);
+        document.getElementById('f_out').textContent='推荐：'+r.pick+' —— '+r.why;
+      };
+    })();
+    </script>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p><code>need_ai</code> 已在仓库代码里落地。请再加一条：<b>「团队 &lt; 3 人且纯 API → 优先 FastAPI（小团队少约定）」</b>，给 <code>ProjectProfile</code> 加 <code>team_size: int = 5</code>，并写一条 pytest。</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># ProjectProfile 加字段</span>
+team_size: <span class="k">int</span> = 5
+
+<span class="cm"># advise() 在合适位置插入：</span>
+<span class="k">elif</span> (not p.has_frontend) and p.team_size &lt; 3:
+    pick = <span class="s">"FastAPI"</span>
+    why  = <span class="s">"小团队纯 API，少约定优先"</span>
+
+<span class="cm"># 加一条 pytest 断言 pick == FastAPI</span></div></div>
+    <div class="note">做完你会发现：判断树是<b>可逐步生长</b>的。交互区与 API 规则保持一致——改代码后记得同步改本页脚本。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>场景</th><th>推荐框架</th><th>理由</th></tr></thead><tbody>
+      <tr><td><b>要渲染页面 / 全栈 MVC</b></td><td>Laravel</td><td>Blade + 一把梭，开箱即用</td></tr>
+      <tr><td><b>纯后端 API / 微服务</b></td><td>FastAPI</td><td>更轻、更显式、类型即文档</td></tr>
+      <tr><td><b>高并发 I/O / 流式响应</b></td><td>FastAPI</td><td>ASGI 异步红利明显</td></tr>
+      <tr><td><b>AI / ML 推理服务</b></td><td>FastAPI</td><td>Python 生态无摩擦</td></tr>
+      <tr><td><b>团队 PHP 深 / 交付紧</b></td><td>Laravel</td><td>团队资产优先，先跑起来</td></tr>
+      <tr><td><b>后台 / CMS / 电商</b></td><td>Laravel</td><td>生态成熟、轮子齐全</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">框架没有高下，只有合不合适。<br><span class="hl">先看项目长什么样，再选工具。</span><br>Laravel 用熟，FastAPI 也不难——你已对照学完 15 期。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>routes/api.php</code> 用 <code>Route::post()</code> 声明端点，逻辑可推入 Service/Policy 类 —— 官方文档 routing / service container 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>APIRouter</code> + 路径操作函数 + Pydantic 模型做请求校验与文档 —— 官方文档 Routing / Body / Models 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep15.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep14/"><div class="lbl">← 上一期</div><div class="ttl">EP14 · 部署</div></a><span></span></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP15 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

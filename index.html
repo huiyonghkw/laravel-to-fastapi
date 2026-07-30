@@ -1,32 +1,56 @@
-<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laravel↔FastAPI 对照学 · 免费试读</title><link rel="stylesheet" href="assets/theme.css?v=4"></head><body>
-<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学 · 试读</div><div class="links"><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a><a href="ep00/">EP00</a></div></div>
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a><a href="ep00/">EP00</a></div></div>
 <div class="wrap">
   <div class="hero">
-    <span class="kicker">免费试读 · 3 期</span>
+    <span class="kicker">后端框架 · 对照学</span>
     <h1>做了 8 年 Laravel，<br><span class="k">怎么上手 FastAPI</span></h1>
-    <p class="lead">不从头学，<b>把肌肉记忆平移过去</b>。本仓是 <b>MIT 试读档</b>：世界观 / 路由 / 校验三期完整可跑。完整 15 期在付费私有仓 <code>laravel-to-fastapi-pro</code>。</p>
+    <p class="lead">不从头学，<b>把肌肉记忆平移过去</b>。你是 Laravel 老手、Python 零基础——本系列不教你 Python，只把你的 Laravel 心智<span class="k">逐概念翻译成 FastAPI 写法</span>，左 Laravel / 右 FastAPI，复制即跑。</p>
   </div>
 
   <div class="sec">
-    <h2>试读<span class="hl">三期</span></h2>
-    <p style="font-size:16px;color:var(--text3)">装完就能 <code>uvicorn</code> + 打开 <code>/docs</code>。验证「概念平移」学法有没有用，再决定要不要完整仓。</p>
+    <h2>这个系列<span class="hl">是什么</span></h2>
+    <p>2026 年，两个框架不约而同拥抱 AI：Laravel 13 出了官方 AI SDK，FastAPI 成了 LLM 后端的基础设施。向左学了这么多年，向右也该通了。</p>
+    <p>但很多人不是不会 Python，是<b>不想从「print hello」重新来过</b>。所以我们换个学法：<b>不学新语言，只做概念平移</b>——每期一个后端概念，左 Laravel、右 FastAPI，同框对照、可运行。</p>
+    <div class="note">配套仓库里 <code>fastapi/</code> 是<b>复制即跑</b>的对照骨架（<code>uvicorn</code> + <code>/docs</code> + <code>pytest</code>）；<code>laravel/</code> 是<b>源码对照</b>（无完整 artisan 工程，见 <code>laravel/README.md</code>）。每个 EP 的代码都从那里来。</div>
+    <p>
+      <span class="tag">Laravel 13</span><span class="tag">PHP 8.3+</span><span class="tag">FastAPI 0.140</span>
+      <span class="tag">Pydantic</span><span class="tag">ASGI</span><span class="tag">对照学习</span>
+    </p>
+  </div>
+
+  <div class="sec">
+    <h2>15 期<span class="hl">路线图</span></h2>
+    <p style="font-size:16px;color:var(--text3)">卡片标注深度：<b style="color:var(--accent)">厚</b> = 代码+坑位较完整；<b>中</b> = 可跑示意 + 正文对照。全部有 HTML 正文与 FastAPI 端点。</p>
     <div class="grid">
-      <a class="card done thick" href="ep00/"><div class="no">EP00 · 试读</div><div class="ti">世界观与请求生命周期</div><div class="de">两个框架的 2026 殊途同归，第一篇代码密集对照。</div><div class="depth">深度 · 厚</div></a>
-      <a class="card done thick" href="ep02/"><div class="no">EP02 · 试读</div><div class="ti">路由</div><div class="de">Route:: 分组/中间件 vs APIRouter(prefix+dependencies)。</div><div class="depth">深度 · 厚</div></a>
-      <a class="card done thick" href="ep05/"><div class="no">EP05 · 试读</div><div class="ti">校验与序列化</div><div class="de">Form Request + Resource vs Pydantic + response_model。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done thick" href="ep00/"><div class="no">EP00 · 已发布</div><div class="ti">世界观与请求生命周期</div><div class="de">两个框架的 2026 殊途同归，第一篇代码密集对照。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done thick" href="ep01/"><div class="no">EP01 · 已发布</div><div class="ti">心智模型：容器 vs 依赖注入</div><div class="de">DI（基础+嵌套+缓存）vs Depends，同步 vs 异步并发。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done thick" href="ep02/"><div class="no">EP02 · 已发布</div><div class="ti">路由</div><div class="de">Route:: 分组/中间件 vs APIRouter(prefix+dependencies)。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done" href="ep03/"><div class="no">EP03 · 已发布</div><div class="ti">控制器 vs 路径操作</div><div class="de">Controller 类 vs Path Operation 函数。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep04/"><div class="no">EP04 · 已发布</div><div class="ti">请求与响应</div><div class="de">Request / Response 对象对照。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done thick" href="ep05/"><div class="no">EP05 · 已发布</div><div class="ti">校验与序列化</div><div class="de">Form Request + Resource vs Pydantic + response_model。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done thick" href="ep06/"><div class="no">EP06 · 已发布</div><div class="ti">ORM</div><div class="de">Eloquent vs SQLAlchemy 2.0 select / joinedload。</div><div class="depth">深度 · 厚</div></a>
+      <a class="card done" href="ep07/"><div class="no">EP07 · 已发布</div><div class="ti">迁移</div><div class="de">php artisan migrate vs Alembic 可跑骨架。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep08/"><div class="no">EP08 · 已发布</div><div class="ti">事务与关联</div><div class="de">DB::transaction vs 同步 session.begin()。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep09/"><div class="no">EP09 · 已发布</div><div class="ti">依赖注入进阶</div><div class="de">容器绑定 vs Depends 嵌套 / 生命周期。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep10/"><div class="no">EP10 · 已发布</div><div class="ti">中间件</div><div class="de">路由 Depends + 全局 CORSMiddleware。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep11/"><div class="no">EP11 · 已发布</div><div class="ti">认证授权</div><div class="de">Sanctum vs OAuth2PasswordBearer（教学 stub）。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep12/"><div class="no">EP12 · 已发布</div><div class="ti">测试</div><div class="de">Pest / PHPUnit vs pytest + TestClient。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep13/"><div class="no">EP13 · 已发布</div><div class="ti">异步与队列</div><div class="de">BackgroundTasks vs Celery/ARQ 边界。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep14/"><div class="no">EP14 · 已发布</div><div class="ti">部署</div><div class="de">Nginx + PHP-FPM vs Gunicorn/Uvicorn + Docker。</div><div class="depth">深度 · 中</div></a>
+      <a class="card done" href="ep15/"><div class="no">EP15 · 已发布</div><div class="ti">收官：选型决策树</div><div class="de">什么时候用哪个，怎么组合。</div><div class="depth">深度 · 中</div></a>
     </div>
-    <div class="note">其余 EP01 / EP03–EP04 / EP06–EP15（ORM、迁移、认证、部署、决策树等）仅在付费仓 <b>laravel-to-fastapi-pro</b>。付款后加 GitHub collaborator，不发 zip。</div>
   </div>
 
   <div class="sec">
-    <h2>怎么<span class="hl">跑起来</span></h2>
+    <h2>怎么<span class="hl">跟着学</span></h2>
     <div class="steps">
-      <div class="s"><div class="n">1</div><div class="t"><b>克隆本仓</b>：MIT，完整可用的试读产品。</div></div>
-      <div class="s"><div class="n">2</div><div class="t"><b>启动</b>：<code>cd fastapi && pip install -r requirements.txt && uvicorn app.main:app --reload</code></div></div>
-      <div class="s"><div class="n">3</div><div class="t"><b>打开</b>：<code>/docs</code>，打 <code>GET /ep00/hello</code> 过关。</div></div>
+      <div class="s"><div class="n">1</div><div class="t"><b>平移，不重学</b>：把 Laravel 的概念直接映射到 FastAPI，不补 Python 基础课。</div></div>
+      <div class="s"><div class="n">2</div><div class="t"><b>左 Laravel · 右 FastAPI</b>：每期一张同框对照，复制即跑，看见对应关系就懂。</div></div>
+      <div class="s"><div class="n">3</div><div class="t"><b>从能跑开始</b>：克隆仓库，<code>cd fastapi && pip install -r requirements.txt && uvicorn app.main:app --reload</code>，先看 <code>/docs</code>。</div></div>
     </div>
+    <div class="note">本系列不发小红书，以 HTML 长文 + 可运行代码发布在 GitHub Pages。CI 会跑 <code>pytest</code> 与 Docker build。</div>
   </div>
 
-  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · 试读档 MIT · <a href="https://github.com/huiyonghkw/laravel-to-fastapi">源码仓库</a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 · <a href="https://github.com/huiyonghkw/laravel-to-fastapi">源码仓库</a></div>
 </div>
 </body></html>

@@ -1,0 +1,169 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP13 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP13 · 异步与队列</span>
+    <h1>响应先走，<span class="k">重活后台跑</span></h1>
+    <p class="lead">「发邮件 / 写日志 / 跑报表」这种慢任务，不该卡住用户请求。Laravel 用 <code>Queue</code> 丢给 Worker；FastAPI 轻量的用 <code>BackgroundTasks</code>，重负载用 <code>Celery / ARQ</code>——心智完全一致。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边都是<b>「立即返回响应 + 把慢任务挪到后面跑」</b>。差别只在「后面」是 Laravel 的独立 Worker 进程，还是 FastAPI 进程内的后台线程。重活一律交给真正的队列。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的队列</div><ul>
+        <li><code>dispatch(Job)</code> / <code>Queue::push</code> 把任务入队</li>
+        <li>独立 <b>Worker 进程</b>异步消费（<code>php artisan queue:work</code>）</li>
+        <li>天生跨进程、可重试、可分布式</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的异步</div><ul>
+        <li>轻量：<code>BackgroundTasks</code> 响应后同进程跑</li>
+        <li>重活：<code>Celery / ARQ</code> + 独立 Worker，同 Laravel Queue</li>
+        <li><code>async def</code> 还能把 I/O 等待让给事件循环</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 队列 ≈ ARQ/Celery 队列</b>；FastAPI 的 <code>BackgroundTasks</code> 只是「进程内小后台」，别把它当分布式队列用。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">把慢任务丢到后台</span></h2>
+    <p>「立刻回 <code>{queued:true}</code>，邮件慢慢发」——左 Laravel 入队，右 FastAPI 加后台任务。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::post(<span class="s">'/notify'</span>, <span class="k">function</span> (\Illuminate\Http\
+Request $r) {
+    \Illuminate\Support\Facades\Queue::push(
+        <span class="k">new</span> \App\Jobs\SendEmail(
+            $r-&gt;input(<span class="s">'email'</span>)));
+    <span class="k">return</span> [<span class="s">'queued'</span> =&gt; <span class="k">true</span>,
+            <span class="s">'email'</span>   =&gt; $r-&gt;input(<span class="s">'email'</span>)];
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep13.py</span>
+<span class="k">@router</span>.post(<span class="s">'/notify'</span>)
+<span class="k">def</span> notify(email: <span class="k">str</span>,
+             bg: BackgroundTasks):
+    bg.add_task(_send_email, email)
+    <span class="k">return</span> {<span class="s">'queued'</span>: <span class="k">True</span>,
+            <span class="s">'email'</span>: email}</div></div>
+    </div>
+    <div class="note">Laravel 的 <code>Queue::push</code> 等价于 <code>dispatch(new SendEmail(...))</code>；FastAPI 用 <code>BackgroundTasks</code> 的 <code>add_task</code> 挂一个函数在响应后执行。两者都<b>先返回、后干活</b>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">被后台执行的任务体</span></h2>
+    <p>任务函数本身：左是 Laravel 的 Job 类（<code>handle()</code>），右是 FastAPI 的普通函数。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// app/Jobs/SendEmail.php</span>
+<span class="k">class</span> SendEmail <span class="k">implements</span> \Illuminate\
+Contracts\Queue\ShouldQueue {
+    <span class="k">public function</span> __construct(
+        <span class="k">private</span> <span class="k">string</span> $email) {}
+    <span class="k">public function</span> handle() {
+        <span class="cm">// 发邮件 / 写日志，慢活</span>
+        sleep(1);
+        logger(<span class="s">"sent to {$this-&gt;email}"</span>);
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep13.py</span>
+<span class="k">def</span> _send_email(email: <span class="k">str</span>):
+    <span class="cm"># 模拟耗时任务，响应返回后执行</span>
+    time.sleep(<span class="k">0.1</span>)
+    <span class="k">print</span>(<span class="s">f"sent email to {email}"</span>)</div></div>
+    </div>
+    <div class="note">Laravel 的 Job 是<b>类</b>（可序列化进队列、可重试）；FastAPI 的 <code>_send_email</code> 只是个<b>普通函数</b>，只能在当前进程内跑。这正是「进程内 vs 跨进程」的分水岭。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">重负载：上真正的队列</span></h2>
+    <p>邮件这种小活用 <code>BackgroundTasks</code> 够了；但「视频转码 / 批量推送 / 定时重算」必须跨进程。FastAPI 侧请出 <code>Celery</code> 或 <code>ARQ</code>，结构跟 Laravel Queue 一模一样。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel Queue</div><ul>
+        <li><code>dispatch(Job)</code> 入队</li>
+        <li>Broker：Redis / DB / SQS</li>
+        <li>消费：<code>php artisan queue:work</code></li>
+        <li>自带重试、失败表、延迟</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI + ARQ / Celery</div><ul>
+        <li><code>queue.enqueue(job)</code> / <code>await arq.redis.enqueue_job</code></li>
+        <li>Broker：Redis（ARQ）/ RabbitMQ（Celery）</li>
+        <li>消费：独立 Worker 进程</li>
+        <li>同样重试、延迟、并发</li>
+      </ul></div>
+    </div>
+    <div class="note">结论：<b>把 FastAPI 的 <code>BackgroundTasks</code> 当成 Laravel 的「同步闭包」级别</b>；要 Laravel Queue 那种能力，就直接上 ARQ/Celery，别硬扛。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 把 BackgroundTasks 当分布式队列</b>：它只在<b>当前进程内</b>跑，进程被 Gunicorn 回收、重启就丢任务。跨进程 / 必须不丢 → 用 Celery / ARQ。</div>
+    <div class="note"><b>坑 2 · 后台任务里写阻塞代码</b>：骨架里用 <code>time.sleep</code> 只是示意。真实 I/O 请用 <code>async def</code> + <code>await</code>（如 <code>httpx.AsyncClient</code>），否则卡住整个事件循环，所有请求都慢。</div>
+    <div class="note"><b>坑 3 · 把 CPU 重活塞进 async</b>：<code>async def</code> 只让「等待」不阻塞；纯 CPU 密集（转码/大循环）要用 <code>run_in_threadpool</code> 或丢队列，否则单进程被占满。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -X POST http://127.0.0.1:8000/ep13/notify -H 'Content-Type: application/json' -d '{"email":"a@b.com"}'</span>
+<span class="ok">  → {"queued":true,"email":"a@b.com","engine":"BackgroundTasks",...}</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -s localhost:8000/ep13/queue-map | python -m json.tool</span>
+<span class="cm">  → Laravel Queue ↔ BackgroundTasks ↔ Celery/ARQ 边界图</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep13.py</code> 跑起来：POST 立刻拿到 <code>queued</code>，<code>_send_email</code> 在响应后于进程内执行。真队列边界见 <code>GET /ep13/queue-map</code>。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>/ep13/notify</code> 加一个「发完邮件再记一条审计日志」的第二步后台任务：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep13.py 里追加：</span>
+<span class="k">def</span> _audit(email: <span class="k">str</span>):
+    <span class="k">print</span>(<span class="s">f"audit: notified {email}"</span>)
+
+<span class="k">@router</span>.post(<span class="s">'/notify'</span>)
+<span class="k">def</span> notify(email: <span class="k">str</span>, bg: BackgroundTasks):
+    bg.add_task(_send_email, email)
+    bg.add_task(_audit, email)   <span class="cm"># 按顺序追加</span>
+    <span class="k">return</span> {<span class="s">'queued'</span>: <span class="k">True</span>, <span class="s">'email'</span>: email}</div></div>
+    <div class="note">做完你会发现：<code>add_task</code> 按调用顺序排队，跟 Laravel Job 链（<code>dispatch-&gt;withChain</code>）一个心智。区别依旧是——它只在进程内，重活别这么干。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>轻量后台任务</b></td><td>闭包 / 同步调用</td><td><code>BackgroundTasks.add_task</code></td></tr>
+      <tr><td><b>入队异步任务</b></td><td><code>dispatch(Job)</code> / <code>Queue::push</code></td><td><code>Celery / ARQ</code> enqueue</td></tr>
+      <tr><td><b>任务体</b></td><td><code>Job::handle()</code></td><td>普通函数 / async 函数</td></tr>
+      <tr><td><b>消费进程</b></td><td><code>queue:work</code></td><td>Worker 进程（队列专用）</td></tr>
+      <tr><td><b>非阻塞 I/O</b></td><td>Queue 天然异步</td><td><code>async def</code> + <code>await</code></td></tr>
+      <tr><td><b>重试 / 延迟</b></td><td>队列内置</td><td>ARQ / Celery 内置</td></tr>
+      <tr><td><b>跨进程不丢</b></td><td>Queue（是）</td><td>BackgroundTasks（否）</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">异步心智没变：<br><span class="hl">先返回响应，慢活往后挪</span>。<br>轻活 BackgroundTasks，重活上队列。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>Queue::push</code> / <code>dispatch(Job)</code> 将任务入队，由独立 Worker（<code>php artisan queue:work</code>）消费，支持重试与延迟 —— 官方文档 Queues 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>BackgroundTasks</code> 在响应返回后于进程内执行任务；跨进程队列由 <code>Celery</code> / <code>ARQ</code> 提供，结构同 Laravel Queue —— 官方文档 Background Tasks / 异步文档</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep13.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep12/"><div class="lbl">← 上一期</div><div class="ttl">EP12 · 测试</div></a><a class="next" href="../ep14/"><div class="lbl">下一期 →</div><div class="ttl">EP14 · 部署</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP13 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

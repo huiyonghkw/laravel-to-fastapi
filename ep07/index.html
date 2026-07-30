@@ -1,0 +1,204 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP07 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP07 · 迁移</span>
+    <h1>把<span class="k">表结构变更</span>交给版本管理</h1>
+    <p class="lead">迁移就是「用代码描述数据库表结构的每一次改动，且能前进也能回退」。Laravel 用 <code>artisan</code> + 迁移文件；FastAPI 没有内置迁移，生态里用 <b>Alembic</b> 做同一件事。本篇对齐两者的心智。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>无论是 <code>php artisan make:migration</code> 还是 <code>alembic revision</code>，本质都是<b>「生成一份带序号的变更脚本，<code>up</code> 前进、<code>down</code> 回退」</b>。Laravel 把它收进 <code>database/migrations/</code>；FastAPI 把 Alembic 配置放进 <code>alembic/</code>。同一套版本化思路，两种落笔。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的迁移</div><ul>
+        <li><code>artisan make:migration</code> 生成带时间戳的文件</li>
+        <li><code>up()</code> 建表 / 加字段，<code>down()</code> 逆向回退</li>
+        <li><code>php artisan migrate</code> 按顺序执行</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的迁移（Alembic）</div><ul>
+        <li><code>alembic revision -m "..."</code> 生成版本脚本</li>
+        <li><code>upgrade()</code> 前进，<code>downgrade()</code> 回退</li>
+        <li><code>alembic upgrade head</code> 跑到最新</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 把迁移塞进框架，FastAPI 把迁移交给 Alembic</b>。心智完全一致——脚本化、可回退、可多人协作。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">生成迁移文件</span></h2>
+    <p>两边都先「生成一份空脚本」，再往里填表结构改动。左 Laravel 用 artisan；右 FastAPI 用 alembic 命令。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm"># 终端：生成迁移</span>
+<span class="o">php artisan make:migration</span> \
+  create_posts_table
+
+<span class="cm"># 生成 database/migrations/</span>
+<span class="cm"># 2026_07_29_000001_create_posts_table.php</span>
+<span class="k">return</span> new class <span class="k">extends</span> Migration {
+  <span class="k">public function</span> up(): <span class="k">void</span> {
+    Schema::create(<span class="s">'posts'</span>, <span class="k">function</span> ($t) {
+      $t-&gt;id();
+      $t-&gt;string(<span class="s">'title'</span>, 255);
+    });
+  }
+  <span class="k">public function</span> down(): <span class="k">void</span> {
+    Schema::dropIfExists(<span class="s">'posts'</span>);
+  }
+};</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 终端：生成迁移</span>
+<span class="o">alembic revision -m</span> <span class="s">"create posts"</span>
+
+<span class="cm"># 生成 alembic/versions/</span>
+<span class="cm"># xxxx_create_posts.py</span>
+<span class="k">def</span> upgrade():
+    op.create_table(
+        <span class="s">"posts"</span>,
+        sa.Column(<span class="s">"id"</span>, sa.Integer(),
+                  primary_key=<span class="k">True</span>),
+        sa.Column(<span class="s">"title"</span>, sa.String(255)),
+    )
+
+<span class="k">def</span> downgrade():
+    op.drop_table(<span class="s">"posts"</span>)</div></div>
+    </div>
+    <div class="note">Laravel 的迁移文件自带 <code>up()/down()</code> 骨架且能直接用 <code>Schema</code> 流式建表；Alembic 的 <code>upgrade()/downgrade()</code> 用 <code>op</code> 指令，更贴近「SQL 操作原语」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">一段完整的 Alembic 迁移脚本</span></h2>
+    <p>这是 FastAPI 侧最贴近 Laravel 迁移的「实物」——一份可执行的 Alembic 版本脚本（取自 <code>fastapi/app/ep07.py</code> 的注释示例）。左边给 Laravel 的同构写法。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// database/migrations/</span>
+<span class="cm">// 2026_07_29_..._create_posts_table.php</span>
+<span class="k">public function</span> up(): <span class="k">void</span> {
+  Schema::create(<span class="s">'posts'</span>, <span class="k">function</span> ($t) {
+    $t-&gt;id();
+    $t-&gt;string(<span class="s">'title'</span>, 255);
+    $t-&gt;timestamps();
+  });
+}
+<span class="k">public function</span> down(): <span class="k">void</span> {
+  Schema::dropIfExists(<span class="s">'posts'</span>);
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># alembic/versions/xxxx_initial.py</span>
+<span class="k">def</span> upgrade():
+    op.create_table(
+        <span class="s">"posts"</span>,
+        sa.Column(<span class="s">"id"</span>, sa.Integer(),
+                  primary_key=<span class="k">True</span>),
+        sa.Column(<span class="s">"title"</span>, sa.String(255)),
+        sa.Column(<span class="s">"created_at"</span>,
+                  sa.DateTime(), nullable=<span class="k">True</span>),
+    )
+
+<span class="k">def</span> downgrade():
+    op.drop_table(<span class="s">"posts"</span>)</div></div>
+    </div>
+    <div class="note">两边都是「一个前进函数 + 一个回退函数」成对出现。<b>回退函数不是可选项</b>——它能让你 <code>migrate:rollback</code> / <code>alembic downgrade -1</code> 安全撤掉刚上的改动。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">执行迁移 vs 开发期一行建表</span></h2>
+    <p>生产用迁移工具逐步跑；开发期 FastAPI 还能用 <code>Base.metadata.create_all</code> 一键建好所有表（<code>ep07.py</code> 的 <code>/ep07/init</code> 就是这么干的）。Laravel 没有等价「一行建表」，因为它依赖迁移文件。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm"># 执行全部待跑迁移</span>
+<span class="o">php artisan migrate</span>
+
+<span class="cm"># 回退最近一批</span>
+<span class="o">php artisan migrate:rollback</span>
+
+<span class="cm"># 重跑（开发期清库常用）</span>
+<span class="o">php artisan migrate:fresh</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 生产：跑 Alembic 到最新</span>
+<span class="o">alembic upgrade head</span>
+<span class="cm"># 回退一步</span>
+<span class="o">alembic downgrade -1</span>
+
+<span class="cm"># 开发期便捷：POST /ep07/init</span>
+<span class="cm"># 内部执行：</span>
+Base.metadata.create_all(bind=engine)
+<span class="k">return</span> {<span class="s">"tables"</span>:
+  list(Base.metadata.tables.keys())}</div></div>
+    </div>
+    <div class="note"><code>create_all</code> 只认当前 <code>Base.metadata</code> 里已导入的模型，<b>不会补字段、不会删字段</b>；它和迁移是两套机制，别在生产混用。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · create_all 只在开发用</b>：它只能「建表」，改不了已有表结构、也不记录迁移历史。生产环境一律用 <code>alembic upgrade head</code>，否则数据库状态不可追溯。</div>
+    <div class="note"><b>坑 2 · 迁移要可逆</b>：每个 <code>upgrade()</code> 都必须写对应的 <code>downgrade()</code>。只写前进不写回退，<code>alembic downgrade</code> 会直接报错，回滚就没了退路。</div>
+    <div class="note"><b>坑 3 · 忘了导入模型</b>：Alembic 的 <code>env.py</code> 必须 import 你的模型模块，否则 <code>autogenerate</code> 看不到表、<code>create_all</code> 也建不出表。Laravel 反之——迁移文件本身就在描述结构，不受模型影响。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -X POST http://127.0.0.1:8000/ep07/init</span>
+<span class="ok">  → {"tables":["posts", ...]}  开发期一键建表</span>
+
+<span class="cm"># 生产改用 Alembic：</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">alembic upgrade head</span>
+<span class="ok">  → 按版本顺序把库结构升到最新</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep07.py</code> 跑起来：<code>POST /ep07/init</code> 用 <code>create_all</code> 开发期建表；<code>GET /ep07/alembic</code> 看命令速查。仓库已附 <code>alembic/versions/0001_initial.py</code>，在 <code>fastapi/</code> 目录执行 <code>alembic upgrade head</code> 即可（写入 <code>ep07_demo.db</code>）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>posts</code> 表加一个 <code>body</code> 字段（text），两边各写一次「前进 + 回退」：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># alembic/versions/xxxx_add_body.py</span>
+<span class="k">def</span> upgrade():
+    op.add_column(<span class="s">"posts"</span>,
+        sa.Column(<span class="s">"body"</span>, sa.Text(),
+                  nullable=<span class="k">True</span>))
+
+<span class="k">def</span> downgrade():
+    op.drop_column(<span class="s">"posts"</span>, <span class="s">"body"</span>)
+
+<span class="cm"># 然后跑：</span>
+<span class="o">alembic upgrade head</span></div></div>
+    <div class="note">做完你会发现：<code>add_column</code> / <code>drop_column</code> 正好对上 Laravel 的 <code>$table-&gt;text('body')</code> 与回退里的删除。难点不在语法，在「养成每次改动都写可逆迁移」的习惯。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>生成迁移</b></td><td><code>artisan make:migration</code></td><td><code>alembic revision -m</code></td></tr>
+      <tr><td><b>建表 / 加字段</b></td><td><code>Schema::create / $t-&gt;...</code></td><td><code>op.create_table / op.add_column</code></td></tr>
+      <tr><td><b>前进函数</b></td><td><code>up()</code></td><td><code>upgrade()</code></td></tr>
+      <tr><td><b>回退函数</b></td><td><code>down()</code></td><td><code>downgrade()</code></td></tr>
+      <tr><td><b>执行迁移</b></td><td><code>php artisan migrate</code></td><td><code>alembic upgrade head</code></td></tr>
+      <tr><td><b>回退一步</b></td><td><code>migrate:rollback</code></td><td><code>alembic downgrade -1</code></td></tr>
+      <tr><td><b>开发期建表</b></td><td>无（依赖迁移）</td><td><code>Base.metadata.create_all</code></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">迁移心智没变：<br><span class="hl">脚本化 · 可前进 · 可回退</span>。<br>Laravel 用 artisan，FastAPI 用 Alembic。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>php artisan make:migration</code> 生成带时间戳的迁移文件，<code>up()/down()</code> 描述前进/回退，<code>php artisan migrate</code> 与 <code>migrate:rollback</code> 执行 —— 官方文档 migrations 章节</li>
+        <li><b>FastAPI 0.140.13</b>：迁移由 Alembic 负责，<code>alembic revision</code> 生成版本脚本，<code>upgrade()/downgrade()</code> 对应前进/回退，<code>alembic upgrade head</code> 执行 —— 官方文档 SQL (Relational) Databases / Alembic</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep07.py</code> 与 <code>laravel/routes/api.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep06/"><div class="lbl">← 上一期</div><div class="ttl">EP06 · ORM</div></a><a class="next" href="../ep08/"><div class="lbl">下一期 →</div><div class="ttl">EP08 · 事务与关联</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP07 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

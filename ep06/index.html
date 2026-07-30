@@ -1,0 +1,191 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP06 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP06 · ORM</span>
+    <h1>把数据表<span class="k">变成对象</span></h1>
+    <p class="lead">ORM 就是「让数据库行当成一个普通对象来用」。Laravel 给的是 <b>Eloquent</b>（Model 即表）；FastAPI 通常配 <b>SQLAlchemy 2.0</b>（先定义模型类，再用 session 查）。本篇讲清两边如何定义模型、怎么写关联、怎么查询。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>无论是 Eloquent 还是 SQLAlchemy，本质都是<b>「一张表 ↔ 一个类，一行 ↔ 一个对象」</b>。Laravel 把 CRUD 方法直接挂在 Model 上（静态调用）；FastAPI/SQLAlchemy 把操作交给一个独立的 <b>session</b> 对象。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel · Eloquent</div><ul>
+        <li>Model 类就是一张表，<code>Post::all()</code> 直接查</li>
+        <li>关联写在 Model 里：<code>hasMany()</code> / <code>belongsTo()</code></li>
+        <li>方法多为<b>静态/实例调用</b>，框架接管连接</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI · SQLAlchemy 2.0</div><ul>
+        <li>模型类继承共享 <code>Base</code>，用 <code>Mapped</code> 声明字段</li>
+        <li>关联用 <code>relationship()</code> 等价 <code>hasMany</code></li>
+        <li>查询走 <code>session.execute(select(...))</code>（SQLAlchemy 2.0，别用 legacy <code>db.query</code>）</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「Model 自带 CRUD」，SQLAlchemy 是「对象 + session 分离」</b>。同一个心智，两种不同的落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">模型定义</span></h2>
+    <p>先声明「表长什么样」。左 Laravel 用 <code>$fillable</code> + 关联方法；右 FastAPI 用 <code>Mapped</code> / <code>mapped_column</code> + <code>relationship</code>。字段、外键、关联一一对应。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// app/Models/Post.php</span>
+<span class="k">class</span> Post <span class="k">extends</span> Model
+{
+    <span class="k">protected</span> $fillable = [<span class="s">'title'</span>];
+    <span class="k">public function</span> comments() {
+        <span class="k">return</span> <span class="k">$this</span>->hasMany(Comment::<span class="k">class</span>);
+    }
+}
+<span class="cm">// app/Models/Comment.php</span>
+<span class="k">class</span> Comment <span class="k">extends</span> Model
+{
+    <span class="k">protected</span> $fillable = [<span class="s">'body'</span>, <span class="s">'post_id'</span>];
+    <span class="k">public function</span> post() {
+        <span class="k">return</span> <span class="k">$this</span>->belongsTo(Post::<span class="k">class</span>);
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># app/ep06.py（继承共享 Base）</span>
+<span class="k">class</span> Post(Base):
+    __tablename__ = <span class="s">"ep06_posts"</span>
+    id: Mapped[<span class="k">int</span>] = mapped_column(primary_key=<span class="k">True</span>)
+    title: Mapped[<span class="k">str</span>] = mapped_column(String(255))
+    comments: Mapped[<span class="k">list</span>[<span class="s">"Comment"</span>]] = \
+        relationship(back_populates=<span class="s">"post"</span>)
+
+<span class="k">class</span> Comment(Base):
+    __tablename__ = <span class="s">"ep06_comments"</span>
+    id: Mapped[<span class="k">int</span>] = mapped_column(primary_key=<span class="k">True</span>)
+    body: Mapped[<span class="k">str</span>] = mapped_column(String(255))
+    post_id: Mapped[<span class="k">int</span>] = mapped_column(
+        ForeignKey(<span class="s">"ep06_posts.id"</span>))
+    post: Mapped[<span class="s">"Post"</span>] = \
+        relationship(back_populates=<span class="s">"comments"</span>)</div></div>
+    </div>
+    <div class="note"><code>relationship(back_populates=)</code> 等价于 Eloquent 的 <code>hasMany</code> + <code>belongsTo</code> 双向关联；<code>String(255)</code>、<code>ForeignKey(...)</code> 对应 Laravel 迁移里的字段类型与外键。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">关联查询 with('comments')</span></h2>
+    <p>「取文章、连同它的评论一起」——Laravel 用 <code>with('comments')</code> 预加载；FastAPI 因为 <code>relationship</code> 已声明，直接访问 <code>.comments</code> 即可（SQLAlchemy 2.0 默认会话内惰性加载）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// PostController@index</span>
+<span class="k">public function</span> index()
+{
+    <span class="cm">// with() 预加载，避免 N+1 查询</span>
+    $posts = Post::with(<span class="s">'comments'</span>)->get();
+    <span class="k">return</span> response()->json($posts);
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep06.py · list_posts（2.0 select + joinedload）</span>
+<span class="k">@router</span>.get(<span class="s">"/posts"</span>)
+<span class="k">def</span> list_posts(db=Depends(get_db)):
+    stmt = select(Post).options(
+        joinedload(Post.comments))
+    rows = db.execute(stmt).unique().scalars().all()
+    <span class="k">return</span> [
+        {<span class="s">"id"</span>: p.id, <span class="s">"title"</span>: p.title,
+         <span class="s">"comments"</span>: [c.body <span class="k">for</span> c <span class="k">in</span> p.comments]}
+        <span class="k">for</span> p <span class="k">in</span> rows
+    ]</div></div>
+    </div>
+    <div class="note">两边都能拿到 <code>post.comments</code>。差别：Eloquent 默认<b>惰性加载</b>（不写 <code>with</code> 会触发 N+1），所以要显式 <code>with</code>；SQLAlchemy 2.0 在 session 内访问关联也会发 SQL，同样要注意 N+1（可用 <code>joinedload</code> 预加载）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">新增与写入</span></h2>
+    <p>「存一条数据」。Laravel 的 <code>Model::create()</code> 一行搞定；FastAPI 要 <code>add()</code> + <code>commit()</code>，因为是 session 托管写入。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// Eloquent：静态 create 一步提交</span>
+$post = Post::create([<span class="s">'title'</span> => <span class="s">'Hi'</span>]);
+$post->comments()->save(
+    <span class="k">new</span> Comment([<span class="s">'body'</span> => <span class="s">'nice'</span>]));</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># SQLAlchemy：add + commit</span>
+post = Post(title=<span class="s">"Hi"</span>)
+db.add(post)
+db.commit()
+db.refresh(post)  <span class="cm"># 拿回生成的主键</span>
+comment = Comment(body=<span class="s">"nice"</span>, post=post)
+db.add(comment)
+db.commit()</div></div>
+    </div>
+    <div class="note"><code>commit()</code> 才真正落库，相当于 Eloquent 在请求结束自动 flush 的那一步；<code>db.refresh(post)</code> 把数据库生成的自增 <code>id</code> 同步回对象——Eloquent 的 <code>create</code> 内部已帮你做了。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · ORM 对象不能直接返回</b>：FastAPI 路由里 <code>return post</code>（模型实例）会报错——它只认 dict / Pydantic / list。要像 ep06 那样手动转成 <code>{"id": p.id, ...}</code>，或配 <code>response_model</code>。</div>
+    <div class="note"><b>坑 2 · 会话要关</b>：别把 <code>session</code> 当全局长连接一直用。<code>get_db</code> 用 <code>try/finally: db.close()</code> 在请求结束后关闭；用 <code>Depends(get_db)</code> 注入就自动回收。</div>
+    <div class="note"><b>坑 3 · 迁移得自己接</b>：Eloquent 有 <code>php artisan migrate</code>；SQLAlchemy 没有内置迁移器。演示可 <code>Base.metadata.create_all(engine)</code>，真实项目要接 <b>Alembic</b> 管版本。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="steps">
+      <div class="s"><span class="n">1</span><span class="t">在 <code>app/main.py</code> 把 ep06 路由挂上：<code>app.include_router(ep06.router, prefix="/ep06")</code></span></div>
+      <div class="s"><span class="n">2</span><span class="t">启动 ASGI 服务（演示用内存 SQLite，无需真实库）</span></div>
+      <div class="s"><span class="n">3</span><span class="t">打开 <code>/docs</code>，试 <code>GET /ep06/posts</code></span></div>
+    </div>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 GET /ep06/posts（ep06.list_posts）</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep06.py</code> 跑起来：模型继承自 <code>app/db.py</code> 的共享 <code>Base</code>，<code>get_db</code> 注入 session。<code>/ep06/posts</code> 会查出所有文章并带上评论数量。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>GET /ep06/posts/{id}</code> 加一个按主键取单篇、并带评论数的接口：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep06.py 的 router 上加：</span>
+<span class="k">@router</span>.get(<span class="s">"/posts/{post_id}"</span>)
+<span class="k">def</span> get_post(post_id: <span class="k">int</span>,
+             db=Depends(get_db)):
+    post = db.get(Post, post_id)  <span class="cm"># 主键查询</span>
+    <span class="k">if</span> post <span class="k">is</span> <span class="k">None</span>:
+        <span class="k">raise</span> HTTPException(404)
+    <span class="k">return</span> {<span class="s">"id"</span>: post.id,
+            <span class="s">"title"</span>: post.title,
+            <span class="s">"comments"</span>: len(post.comments)}</div></div>
+    <div class="note">做完你会发现：<code>db.get(Post, post_id)</code> 等价于 Eloquent 的 <code>Post::find($id)</code>；找不到时别忘了抛 <code>HTTPException(404)</code>——Eloquent 的 <code>findOrFail</code> 会自动 404，FastAPI 得自己写。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>定义模型</b></td><td><code>class Post extends Model</code></td><td><code>class Post(Base)</code> + <code>Mapped</code></td></tr>
+      <tr><td><b>一对多关联</b></td><td><code>hasMany()</code> / <code>belongsTo()</code></td><td><code>relationship(back_populates=)</code></td></tr>
+      <tr><td><b>预加载关联</b></td><td><code>Post::with('comments')</code></td><td>访问 <code>.comments</code>（或 <code>joinedload</code>）</td></tr>
+      <tr><td><b>查全部</b></td><td><code>Post::all()</code></td><td><code>db.execute(select(Post)).scalars().all()</code></td></tr>
+      <tr><td><b>按主键取</b></td><td><code>Post::find($id)</code></td><td><code>db.get(Post, id)</code></td></tr>
+      <tr><td><b>新增落库</b></td><td><code>Post::create([...])</code></td><td><code>db.add(); db.commit()</code></td></tr>
+      <tr><td><b>关连接</b></td><td>框架自动</td><td><code>get_db</code> 的 <code>finally: db.close()</code></td></tr>
+      <tr><td><b>迁移</b></td><td><code>php artisan migrate</code></td><td><code>create_all</code> / <b>Alembic</b></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">ORM 心智没变：<br><span class="hl">表 ↔ 类，行 ↔ 对象</span>。<br>Laravel 让 Model 自带 CRUD，SQLAlchemy 把操作交给 session。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：Eloquent <code>Model</code> 即表，<code>hasMany</code> / <code>belongsTo</code> 声明关联，<code>with()</code> 预加载避免 N+1 —— 官方文档 Eloquent ORM 章节</li>
+        <li><b>FastAPI 0.140.13</b>：配合 SQLAlchemy 2.0 风格（<code>Mapped</code> / <code>mapped_column</code> / <code>relationship</code>），查询经 <code>Session</code>，依赖注入用 <code>Depends(get_db)</code> —— 官方文档 SQLAlchemy 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep06.py</code> 与 <code>fastapi/app/db.py</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep05/"><div class="lbl">← 上一期</div><div class="ttl">EP05 · 校验与序列化</div></a><a class="next" href="../ep07/"><div class="lbl">下一期 →</div><div class="ttl">EP07 · 迁移</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP06 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>
