@@ -1,0 +1,228 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP00 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP00 · 世界观与代码对照</span>
+    <h1>做了 8 年 Laravel，<br><span class="k">怎么上手 FastAPI</span></h1>
+    <p class="lead">不从头学，<b>把肌肉记忆平移过去</b>。本篇把世界观落成代码——六个最常用的后端概念，<b>左 Laravel / 右 FastAPI</b>，复制即跑。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>为什么做这套<span class="hl">对照学</span></h2>
+    <p>2026 年，两个框架不约而同地拥抱 AI：Laravel 13 出了官方 AI SDK，FastAPI 成了 LLM 后端的基础设施。向左学了这么多年，向右也该通了。</p>
+    <p>但很多人不是不会 Python，是<b>不想从「print hello」重新来过</b>。所以我们换个学法：<b>不学新语言，只做概念平移</b>——你已有的路由、控制器、ORM、中间件、依赖注入，FastAPI 全都有对应物。</p>
+    <div class="note">配套仓库 <code>fastapi/</code> 与 <code>laravel/</code> 是<b>可运行的对照代码骨架</b>。下面每段代码都来自那里，建议边读边抄、边抄边跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>两个框架<span class="hl">怎么定位</span></h2>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 13 · 全栈</div><ul>
+        <li><b>精装全栈房</b>：路由、ORM、队列、认证、迁移一个 composer 装齐</li>
+        <li>请求走 <b>PHP-FPM</b>，同步阻塞</li>
+        <li>哲学：全栈 MVC、约定优于配置</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 0.140 · API</div><ul>
+        <li><b>API 专用毛坯</b>：只把请求变成 JSON，其余你自己选型</li>
+        <li>请求走 <b>ASGI</b> 事件循环，异步并发</li>
+        <li>哲学：API 优先、显式类型提示</li>
+      </ul></div>
+    </div>
+    <div class="note">最大的体感差在<b>同步 vs 异步</b>：Laravel 一个请求占满一个进程；FastAPI 一个进程能同时接很多——所以它在 AI 流式响应上更顺。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>六个概念<span class="hl">代码对照</span></h2>
+    <p>下面每段都是<b>左 Laravel / 右 FastAPI</b>。先扫一眼「长得像不像」，再往下读差异点。代码已尽量精简，复制即可运行。</p>
+
+    <h3><span class="tag">→ EP02</span> ① 路由（分组 + 中间件）</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::middleware(<span class="s">'auth:sanctum'</span>)->group(<span class="k">function</span> () {
+    <span class="k">Route</span>::get(<span class="s">'/posts'</span>, [PostController::<span class="k">class</span>, <span class="s">'index'</span>]);
+    <span class="k">Route</span>::post(<span class="s">'/posts'</span>, [PostController::<span class="k">class</span>, <span class="s">'store'</span>]);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 路由即装饰器</span>
+<span class="k">@app</span>.get(<span class="s">'/posts'</span>)
+<span class="k">def</span> list_posts(): <span class="k">return</span> {...}
+
+<span class="cm"># 分组用 APIRouter</span>
+router = APIRouter(
+    dependencies=[Depends(get_current_user)])</div></div>
+    </div>
+    <div class="note">Laravel 用 <code>Route::</code> 门面 + 闭包分组；FastAPI 用 <code>@app.get</code> 装饰器，多组路由收敛到 <code>APIRouter</code> 再 <code>include_router</code>。语义一一对应。</div>
+
+    <h3><span class="tag">→ EP03</span> ② 控制器 vs 路径操作函数</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// PostController.php</span>
+<span class="k">class</span> PostController <span class="k">extends</span> Controller {
+    <span class="k">public function</span> index() {
+        <span class="k">return</span> Post::all();
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 路由即函数，无需 Controller 类</span>
+<span class="k">@router</span>.get(<span class="s">'/posts'</span>)
+<span class="k">def</span> list_posts():
+    <span class="k">return</span> db.execute(select(Post)).scalars().all()</div></div>
+    </div>
+    <div class="note">Laravel 把逻辑收进 Controller 类；FastAPI 直接把函数当一个「路径操作」。小项目更轻，大项目可把函数收进模块分组管理。</div>
+
+    <h3><span class="tag">→ EP05</span> ③ 请求校验（Pydantic vs Form Request）</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// StorePostRequest.php</span>
+<span class="k">public function</span> rules(): array {
+    <span class="k">return</span> [
+        <span class="s">'title'</span> => <span class="s">'required|string|max:255'</span>,
+        <span class="s">'body'</span>  => <span class="s">'nullable|string'</span>,
+    ];
+}
+<span class="cm">// 控制器里直接用</span>
+<span class="k">public function</span> store(StorePostRequest $req) {
+    Post::create($req->validated());
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 一个 model 兼任 校验+序列化+文档</span>
+<span class="k">class</span> PostCreate(<span class="k">BaseModel</span>):
+    title: <span class="k">str</span> = Field(max_length=255)
+    body:  <span class="k">str</span> | <span class="k">None</span> = <span class="k">None</span>
+
+<span class="k">@router</span>.post(<span class="s">'/posts'</span>)
+<span class="k">def</span> create_post(p: PostCreate):
+    <span class="k">return</span> create_post_in_db(p)</div></div>
+    </div>
+    <div class="note">这是最值得记住的一对：Laravel 要 Form Request（规则）+ Resource（序列化）两样；FastAPI 一个 <b>Pydantic model</b> 三件事全包，还顺手生成 Swagger 文档。</div>
+
+    <h3><span class="tag">→ EP01/09</span> ④ 依赖注入（容器 vs Depends）</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 容器自动解析构造里的类型提示</span>
+<span class="k">public function</span> __construct(
+    <span class="k">private</span> PostRepository $posts
+) {}
+<span class="cm">// $posts 由服务容器注入</span></div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># Depends 就是依赖注入</span>
+<span class="k">def</span> get_db():
+    db = SessionLocal()
+    <span class="k">try</span>: <span class="k">yield</span> db
+    <span class="k">finally</span>: db.close()
+
+<span class="k">@router</span>.get(<span class="s">'/posts'</span>)
+<span class="k">def</span> list_posts(db = Depends(get_db)):
+    <span class="k">return</span> db.execute(select(Post)).scalars().all()</div></div>
+    </div>
+    <div class="note">两者同构：都在「调用方」声明要什么，由框架把实例送进来。<code>yield</code> 还能管连接的生命周期——请求结束自动 close。</div>
+
+    <h3><span class="tag">→ EP06</span> ⑤ ORM（Eloquent vs SQLAlchemy 2.0）</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// Eloquent：模型即表</span>
+<span class="k">class</span> Post <span class="k">extends</span> Model {
+    <span class="k">protected</span> $fillable = [<span class="s">'title'</span>, <span class="s">'body'</span>];
+}
+<span class="cm">// 用法</span>
+Post::where(<span class="s">'user_id'</span>, $id)
+    ->with(<span class="s">'comments'</span>)->get();</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># SQLAlchemy 2.0 风格</span>
+<span class="k">class</span> Post(<span class="k">Base</span>):
+    id: Mapped[int] = mapped_column(
+        primary_key=<span class="k">True</span>)
+    title: Mapped[str]
+
+<span class="cm"># 用法（async）</span>
+stmt = select(Post).where(Post.user_id == uid)
+<span class="k">await</span> db.scalars(stmt)</div></div>
+    </div>
+    <div class="note">Eloquent 开箱即用、约定多；SQLAlchemy 更显式、更贴近 SQL，也需要你自己接迁移（Alembic）。偏好「少写配置」选 Eloquent 思路，偏好「完全可控」选 SQLAlchemy。</div>
+
+    <h3><span class="tag">→ EP11</span> ⑥ 认证（Sanctum vs fastapi.security）</h3>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// Sanctum 发 token</span>
+$token = $user->createToken(<span class="s">'api'</span>)
+            ->plainTextToken;
+<span class="cm">// 保护路由</span>
+Route::get(<span class="s">'/me'</span>, fn() => auth()->user())
+    ->middleware(<span class="s">'auth:sanctum'</span>);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># OAuth2 密码流</span>
+oauth2 = OAuth2PasswordBearer(tokenUrl=<span class="s">'login'</span>)
+<span class="k">def</span> get_current_user(t: str = Depends(oauth2)):
+    <span class="k">return</span> decode_token(t)
+
+<span class="k">@app</span>.get(<span class="s">'/me'</span>)
+<span class="k">def</span> me(u = Depends(get_current_user)):
+    <span class="k">return</span> u</div></div>
+    </div>
+    <div class="note">Laravel 用 Sanctum 帮你管 token 与中间件；FastAPI 用 <code>fastapi.security</code> 这套标准件，自己把 <code>Depends</code> 串起来。底层都是「Bearer Token → 解析 → 注入当前用户」。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>都扑向了<span class="hl"> AI</span></h2>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 13</div><ul>
+        <li>官方 <b>Laravel AI SDK</b></li>
+        <li>文本生成 / 工具调用 Agent</li>
+        <li>Embeddings 一套 API</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI</div><ul>
+        <li>成 <b>LLM 后端基建</b></li>
+        <li>流式响应、高并发</li>
+        <li>和 LangChain 等无缝接</li>
+      </ul></div>
+    </div>
+    <div class="note">向左学完，向右也通。<b>两个都会，AI 功能都能落地。</b></div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">cd fastapi && pip install -r requirements.txt</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  Swagger 自动生成，Laravel 没这待遇</span></div></div>
+    <div class="note">先把 <b>/docs</b> 打开看一眼——自动生成的接口文档，是 FastAPI 给新人的第一份礼物。Laravel 侧是<strong>源码对照</strong>（无完整 artisan 工程），阅读 <code>laravel/routes/api.php</code> 即可；要真跑请见 <code>laravel/README.md</code>。</div>
+  </div>
+
+  
+  <div class="sec">
+    <div class="ghost">05b</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>确认 FastAPI 侧真的跑起来了：打开 <code>/docs</code>，试打 <code>GET /ep00/hello</code>，看到 <code>framework: FastAPI</code> 即过关。</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -s localhost:8000/ep00/hello | python -m json.tool</span>
+<span class="ok">  → {"framework": "FastAPI", ...}</span>
+<span class="cm">  加分：pytest 跑通（fastapi/ 目录下直接 pytest）</span></div></div>
+    <div class="note">Laravel 侧本仓是<strong>源码对照</strong>（见 <code>laravel/README.md</code>），不必 <code>composer install</code> 也能对照阅读。FastAPI 侧才是复制即跑。</div>
+  </div>
+
+<div class="sec">
+    <div class="ghost">06</div>
+    <h2>系列怎么排<span class="hl">15 期</span></h2>
+    <div class="steps">
+      <div class="s"><div class="n">0</div><div class="t"><b>世界观 · 心智模型</b>：EP00–EP01</div></div>
+      <div class="s"><div class="n">1</div><div class="t"><b>请求主干</b>：路由 / 控制器 / 校验 —— EP02–EP05</div></div>
+      <div class="s"><div class="n">2</div><div class="t"><b>数据</b>：ORM / 迁移 / 事务 —— EP06–EP08</div></div>
+      <div class="s"><div class="n">3</div><div class="t"><b>工程化</b>：DI / 中间件 / 认证 / 测试 / 队列 / 部署 —— EP09–EP15</div></div>
+    </div>
+  </div>
+
+  <div class="pull">你不是从零学一门语言，<br>只是把 <span class="hl">Laravel 的肌肉记忆</span>，<br>平移成了 FastAPI 的写法。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：2026-03-17 发布，要求 PHP 8.3+，内置官方 Laravel AI SDK —— 来源 laravel.net.cn/docs/13.x/releases</li>
+        <li><b>FastAPI 0.140.13</b>：2026-07-28 发布 —— 来源 fastapi.tiangolo.com/release-notes</li>
+        <li><b>「自动 /docs」</b>：FastAPI 基于类型提示自动生成 OpenAPI / Swagger，官方文档明确</li>
+        <li>文中代码均为<b>对照示意</b>，非逐字产品代码，重在讲清对应关系；完整可运行版在仓库 <code>fastapi/</code> 与 <code>laravel/</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><span></span><a class="next" href="../ep02/"><div class="lbl">下一期试读 →</div><div class="ttl">EP02 · 路由</div></a></div><div class="ttl">EP01 · 心智模型：容器 vs 依赖注入</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP00 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

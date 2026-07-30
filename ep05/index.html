@@ -1,0 +1,189 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP05 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP05 · 校验与序列化</span>
+    <h1>一个 Pydantic<span class="k">包揽三件事</span></h1>
+    <p class="lead">「进来要校验、出去要序列化」是写接口逃不掉的两件苦差。Laravel 要<b>Form Request（校验）+ API Resource（序列化）</b>两样东西分头写；FastAPI 只要<b>一个 Pydantic model</b>，校验、序列化、文档 schema 一次全包。本篇讲清这个「一对多」的落差。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>两边都要回答同一个问题：<b>「客户端传来的数据，先按规则拦一遍，再按样子还回去」</b>。Laravel 把「拦」和「还」拆成两个类；FastAPI 把<b>同一份数据形状</b>既当进门门槛、又当出门镜子。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的校验与序列化</div><ul>
+        <li><b>Form Request</b> 写 <code>rules()</code> 做校验</li>
+        <li><b>API Resource</b> 写 <code>toArray()</code> 做序列化</li>
+        <li>两个类 + 一份路由，三处维护同一份字段</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的校验与序列化</div><ul>
+        <li><b>一个 Pydantic model</b> 同时当校验规则</li>
+        <li>同一个 model 也负责响应序列化</li>
+        <li><code>/docs</code> 的 schema 自动从类型推导</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「分而治之」（两个类各管一头），FastAPI 是「一图两用」（一份类型既当门禁又当镜子）</b>。字段改一次，两边同步的成本完全不同。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">请求校验</span></h2>
+    <p>同一个 <code>POST /users</code>，左 Laravel 在控制器里 <code>$request->validate()</code>，右 FastAPI 把 model 标成函数参数就完事——<b>校验规则写在类型里</b>，框架自动拦。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::post(<span class="s">'/users'</span>,
+  [UserController::<span class="k">class</span>, <span class="s">'store'</span>]);
+<span class="cm">// app/Http/Controllers/Api/UserController.php</span>
+<span class="k">public function</span> store(<span class="k">Request</span> $request) {
+    $data = $request-><span class="k">validate</span>([
+        <span class="s">'name'</span>  => <span class="s">'required|string'</span>,
+        <span class="s">'email'</span> => <span class="s">'required|email'</span>,
+        <span class="s">'age'</span>   => <span class="s">'nullable|integer'</span>,
+    ]);
+    <span class="k">return</span> response()->json([
+        <span class="s">'received'</span> => $data]);
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># fastapi/app/ep05.py</span>
+<span class="k">@router</span>.post(<span class="s">"/users"</span>,
+            response_model=UserOut,
+            status_code=201)
+<span class="k">def</span> create_user(payload: UserCreate):
+    <span class="cm"># 缺字段 / email 非法 → 422</span>
+    <span class="k">return</span> UserOut(id=1,
+        name=payload.name,
+        email=payload.email)</div></div>
+    </div>
+    <div class="note">Laravel 的 <code>rules()</code> 是<b>字符串管道</b>（<code>required|email</code>），靠框架解析；FastAPI 直接吃<b> Python 类型 + 校验器</b>（<code>EmailStr</code>），IDE 能补全、能静态检查。校验失败时 Laravel 抛 <code>ValidationException</code>（默认 422），FastAPI 内置直接回 422。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">一个 model 包三件事</span></h2>
+    <p>Laravel 把「校验 / 序列化 / 文档」拆成 Form Request + Resource 两样；FastAPI 一个 <code>UserCreate</code> 全包了。下面左是 Laravel 的「两件套」示意，右是 FastAPI 的真实 model（取自 <code>ep05.py</code>）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP（两件套）</div></div><div class="sc"><span class="cm">// 1) Form Request 管「进」</span>
+<span class="k">class</span> CreateUserRequest <span class="k">extends</span> FormRequest {
+    <span class="k">public function</span> rules() {
+        <span class="k">return</span> [
+            <span class="s">'name'</span>  => <span class="s">'required|string'</span>,
+            <span class="s">'email'</span> => <span class="s">'required|email'</span>,
+            <span class="s">'age'</span>   => <span class="s">'nullable|integer'</span>,
+        ];
+    }
+}
+<span class="cm">// 2) API Resource 管「出」</span>
+<span class="k">class</span> UserResource <span class="k">extends</span> JsonResource {
+    <span class="k">public function</span> toArray($r) {
+        <span class="k">return</span> [<span class="s">'name'</span> => $this->name,
+                <span class="s">'email'</span> => $this->email];
+    }
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python（一个 model）</div></div><div class="sc"><span class="cm"># 进：UserCreate 校验；出：UserOut 序列化</span>
+<span class="k">class</span> UserCreate(BaseModel):
+    name:  <span class="k">str</span>
+    email: EmailStr
+    age: Optional[<span class="k">int</span>] = <span class="k">None</span>
+
+<span class="k">class</span> UserOut(BaseModel):
+    id: <span class="k">int</span>
+    name: <span class="k">str</span>
+    email: EmailStr   <span class="cm"># 不暴露 age</span></div></div>
+    </div>
+    <div class="note">Laravel 的 <code>toArray()</code> 是<b>手写映射</b>，想改响应字段就改这里；FastAPI 用 <code>model_dump()</code> 直接倒出。想「只回部分字段」时，Laravel 再写个 Resource，FastAPI 再定义个 <code>UserOut</code> model——思路一致，只是 FastAPI 少了「请求用什么、响应用什么」两套命名。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">可选与嵌套字段</span></h2>
+    <p>「age 可空」「email 必须像邮箱」这类约束，两边写法不同但同构。右 FastAPI 的 <code>Optional[int] = None</code> 与 <code>EmailStr</code> 是真实代码；左对应 Laravel 的 <code>nullable|integer</code> 与 <code>email</code> 规则。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// rules() 里的约束写法</span>
+<span class="s">'email'</span> => <span class="s">'required|email'</span>,
+<span class="s">'age'</span>   => <span class="s">'nullable|integer'</span>,
+<span class="cm">// 嵌套：数组字段用 * 通配</span>
+<span class="s">'tags.*'</span> => <span class="s">'nullable|string'</span>,</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 可选字段：默认值 None</span>
+age: Optional[<span class="k">int</span>] = <span class="k">None</span>
+<span class="cm"># 邮箱校验器（需装 email-validator）</span>
+email: EmailStr
+<span class="cm"># 嵌套：再定义一个 BaseModel</span>
+<span class="k">class</span> Tag(BaseModel):
+    label: <span class="k">str</span>
+tags: <span class="k">list</span>[Tag] = []</div></div>
+    </div>
+    <div class="note">嵌套对象两边都是「再定义一层结构」：Laravel 用 <code>tags.*</code> 规则 + 手动读数组；FastAPI 直接嵌套另一个 <code>BaseModel</code>，<b>类型即文档</b>，<code>/docs</code> 里能看到完整的子 schema。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · EmailStr 不报错但静默失效</b>：<code>EmailStr</code> 依赖 <code>email-validator</code> 包，没装时校验不会按邮箱拦。装 FastAPI 时要 <code>pip install "pydantic[email]"</code> 或单独装 <code>email-validator</code>，否则 <code>EmailStr</code> 退化成不校验。</div>
+    <div class="note"><b>坑 2 · 嵌套 model 忘了加默认 / 类型</b>：嵌套字段必须标成 <code>list[SubModel]</code> 这类明确类型，写 <code>list</code> 不带元素类型，FastAPI 不知道子结构，<code>/docs</code> 里也塌成空。Laravel 这边则是忘了 <code>tags.*</code> 规则，嵌套数组不会被逐条校验。</div>
+    <div class="note"><b>坑 3 · 422 自动返回，别自己 try</b>：FastAPI 校验失败<b>自动</b>回 422 JSON（含每个字段的错误），不需要你手动 <code>try/except</code>。Laravel 里 <code>$request->validate()</code> 失败也会自动 422，但很多人习惯自己包一层——对齐心智：两套框架都帮你兜住了。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 POST /ep05/users（故意传错 email 看 422）</span>
+<span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -X POST http://127.0.0.1:8000/ep05/users \</span>
+    -H <span class="s">'Content-Type: application/json'</span> \
+    -d <span class="s">'{"name":"会勇","email":"not-an-email"}'</span>
+<span class="ok">  → 422：{"detail":[{"loc":["body","email"],...}]}</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep05.py</code> 跑起来：<code>UserCreate</code> 标成参数后，<b>任何不合规的 body 都会被自动拦成 422</b>。<code>/docs</code> 里还能直接看到 <code>UserCreate</code> 的 schema 表单——这是 Pydantic「一图两用」最直观的好处。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 <code>UserCreate</code> 加一个「注册时可选填」的字段 <code>is_active: bool = True</code>，再新增一个只负责「出门」的 <code>UserOut</code> model（不含多余字段），把 <code>create_user</code> 改成返回 <code>UserOut</code>。改完用上面的 curl 验证：传不传 <code>is_active</code> 都应成功。</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 fastapi/app/ep05.py 里加：</span>
+<span class="k">class</span> UserOut(BaseModel):
+    name:  <span class="k">str</span>
+    email: EmailStr
+    is_active: <span class="k">bool</span> = <span class="k">True</span>
+
+<span class="k">@router</span>.post(<span class="s">"/users"</span>)
+<span class="k">def</span> create_user(payload: UserCreate) -> UserOut:
+    <span class="k">return</span> UserOut(**payload.model_dump())</div></div>
+    <div class="note">做完你会发现：<code>UserCreate</code>（进门）和 <code>UserOut</code>（出门）是 FastAPI 里最常见的「双 model」分工——等价于 Laravel 的 Form Request + Resource。难点不在语法，在「什么时候该分两个 model」的判断习惯。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>校验请求体</b></td><td><code>$request->validate()</code> / Form Request</td><td>把 Pydantic model 标成参数</td></tr>
+      <tr><td><b>字段必填</b></td><td><code>required|string</code></td><td><code>name: str</code>（无默认=必填）</td></tr>
+      <tr><td><b>邮箱格式</b></td><td><code>email</code> 规则</td><td><code>email: EmailStr</code></td></tr>
+      <tr><td><b>可选字段</b></td><td><code>nullable|integer</code></td><td><code>age: Optional[int] = None</code></td></tr>
+      <tr><td><b>响应序列化</b></td><td>API Resource <code>toArray()</code></td><td>同 model <code>model_dump()</code> / <code>UserOut</code></td></tr>
+      <tr><td><b>文档 schema</b></td><td>手写 / 第三方</td><td>自动从类型推导（<code>/docs</code>）</td></tr>
+      <tr><td><b>校验失败</b></td><td>自动 422</td><td>自动 422（带字段级错误）</td></tr>
+      <tr><td><b>嵌套对象</b></td><td><code>tags.*</code> 规则</td><td>嵌套另一个 <code>BaseModel</code></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">校验与序列化心智没变：<br><span class="hl">进要拦，出要整</span>。<br>Laravel 分两件写，FastAPI 一图两用。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>$request->validate()</code> 与 Form Request 的 <code>rules()</code> 做请求校验，API Resource 的 <code>toArray()</code> 做响应序列化，校验失败默认抛 422 —— 官方文档 Validation / Eloquent Resources 章节</li>
+        <li><b>FastAPI 0.140.13</b>：Pydantic <code>BaseModel</code> 同时承担请求校验与响应序列化，<code>/docs</code> 的 schema 自动从类型提示推导，校验失败自动返回 422 —— 官方文档 Body - Fields / Schema 章节</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep05.py</code> 与 <code>laravel/app/Http/Controllers/Api/UserController.php</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep02/"><div class="lbl">← 上一期试读</div><div class="ttl">EP02 · 路由</div></a><span></span></div><div class="ttl">EP04 · 请求与响应</div></a><a class="next" href="../ep06/"><div class="lbl">下一期 →</div><div class="ttl">EP06 · ORM</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP05 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>

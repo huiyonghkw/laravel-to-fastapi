@@ -1,0 +1,14 @@
+# 一键起 FastAPI 对照骨架（对照 Laravel 的 php artisan serve）
+# 用法：docker compose up --build
+# 文档：http://127.0.0.1:8000/docs
+services:
+  api:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      WORKERS: "2"

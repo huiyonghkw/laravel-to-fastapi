@@ -1,0 +1,174 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP02 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="wrap">
+  <div class="hero">
+    <span class="kicker">EP02 · 路由</span>
+    <h1>URL 到代码的<span class="k">那张地图</span></h1>
+    <p class="lead">路由就是「哪个 URL 交给哪段代码」。两边思路一模一样；差别只在写法：Laravel 用 <code>Route::</code> 门面一句句声明，FastAPI 用<b>装饰器</b>把函数直接变成路由。本篇讲清分组、中间件、路径参数。</p>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">01</div>
+    <h2>一句话<span class="hl">心智模型</span></h2>
+    <p>无论是 <code>Route::get</code> 还是 <code>@app.get</code>，本质都是<b>「URL 模式 + HTTP 方法 → 一段处理函数」</b>。Laravel 把它收进路由文件集中管理；FastAPI 把它<b>贴在函数头上</b>，函数即路由。</p>
+    <div class="cmp">
+      <div class="col"><div class="lab">Laravel 的路由</div><ul>
+        <li>集中在 <code>routes/api.php</code></li>
+        <li><code>Route::get/post/...</code> 门面声明</li>
+        <li>分组、前缀、中间件一套组合</li>
+      </ul></div>
+      <div class="col b"><div class="lab">FastAPI 的路由</div><ul>
+        <li>装饰器贴在函数上，<b>函数即路由</b></li>
+        <li><code>@app.get(...)</code> / <code>@router.post(...)</code></li>
+        <li>多个路由收进 <code>APIRouter</code> 再挂载</li>
+      </ul></div>
+    </div>
+    <div class="note">一句话：<b>Laravel 是「路由表」思维，FastAPI 是「装饰函数」思维</b>。同一个心智，两种落笔。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">02</div>
+    <h2>对照①<span class="hl">单条路由</span></h2>
+    <p>一条 GET、一条 POST，左右一一对应。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// routes/api.php</span>
+<span class="k">Route</span>::get(<span class="s">'/health'</span>, <span class="k">function</span> () {
+    <span class="k">return</span> [<span class="s">'ok'</span> => <span class="k">true</span>];
+});
+<span class="k">Route</span>::post(<span class="s">'/posts'</span>,
+    [PostController::<span class="k">class</span>, <span class="s">'store'</span>]);</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># ep02.py</span>
+<span class="k">@router</span>.get(<span class="s">'/health'</span>)
+<span class="k">def</span> health():
+    <span class="k">return</span> {<span class="s">'ok'</span>: <span class="k">True</span>}
+
+<span class="k">@router</span>.post(<span class="s">'/posts'</span>)
+<span class="k">def</span> create_post():
+    <span class="k">return</span> {<span class="s">'created'</span>: <span class="k">True</span>}</div></div>
+    </div>
+    <div class="note">Laravel 把处理函数写成闭包或指向 Controller；FastAPI 直接把<b>函数本身</b>当处理函数——没有「控制器」这层包装（对照见 EP03）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">03</div>
+    <h2>对照②<span class="hl">路径参数 + 类型校验</span></h2>
+    <p>URL 里的变量，两边都会<b>自动按类型转换/校验</b>。FastAPI 靠类型提示，Laravel 靠路由参数（或隐式绑定）。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// {post_id} 是路由参数</span>
+<span class="k">Route</span>::get(<span class="s">'/posts/{post_id}'</span>,
+  [PostController::<span class="k">class</span>, <span class="s">'show'</span>]);
+<span class="cm">// 控制器里</span>
+<span class="k">public function</span> show(<span class="k">int</span> $post_id) {
+    <span class="k">return</span> [<span class="s">'post_id'</span> => $post_id];
+}</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># {post_id}:int 自动转 int</span>
+<span class="k">@posts</span>.get(<span class="s">'/{post_id}'</span>)
+<span class="k">def</span> get_post(post_id: <span class="k">int</span>):
+    <span class="k">if</span> post_id &lt;= 0:
+        <span class="k">raise</span> HTTPException(404)
+    <span class="k">return</span> {<span class="s">'post_id'</span>: post_id}</div></div>
+    </div>
+    <div class="note">FastAPI 里 <code>post_id: int</code> 既做<b>转换又做校验</b>：传非数字直接 422。Laravel 用路由模型绑定能更优雅（<code>Post $post</code> 直接拿到模型）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">04</div>
+    <h2>对照③<span class="hl">路由分组（前缀 + 标签）</span></h2>
+    <p>一堆同前缀的路由，两边都能「打包成一组」。左 Laravel 用 <code>prefix()->group()</code>，右 FastAPI 用 <code>APIRouter(prefix=)</code>。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 一组 /posts/*</span>
+<span class="k">Route</span>::prefix(<span class="s">'posts'</span>)->group(<span class="k">function</span> () {
+    <span class="k">Route</span>::get(<span class="s">'/'</span>, [PostController::<span class="k">class</span>,<span class="s">'index'</span>]);
+    <span class="k">Route</span>::post(<span class="s">'/'</span>, [PostController::<span class="k">class</span>,<span class="s">'store'</span>]);
+});</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 一个子 router 打包</span>
+posts = APIRouter(prefix=<span class="s">'/posts'</span>,
+                  tags=[<span class="s">'posts'</span>])
+<span class="k">@posts</span>.get(<span class="s">''</span>)  <span class="k">def</span> list_posts(): ...
+<span class="k">@posts</span>.post(<span class="s">''</span>) <span class="k">def</span> create_post(): ...
+router.include_router(posts)  <span class="cm"># 挂回主路由</span></div></div>
+    </div>
+    <div class="note"><code>tags=[...]</code> 只是给 <code>/docs</code> 分组显示用；真正的「前缀」是 <code>prefix</code>。挂回主路由用 <code>include_router</code>——等于 Laravel 路由文件被框架自动加载。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">05</div>
+    <h2>对照④<span class="hl">分组中间件（统一鉴权）</span></h2>
+    <p>「这一组路由都要先登录」——Laravel 用 <code>middleware()->group()</code>，FastAPI 用 <code>APIRouter(dependencies=...)</code>。同一个心智。</p>
+    <div class="codepair">
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">Laravel 13 · PHP</div></div><div class="sc"><span class="cm">// 一组路由加 auth 中间件</span>
+<span class="k">Route</span>::middleware(<span class="s">'auth:sanctum'</span>)
+     ->prefix(<span class="s">'posts'</span>)
+     ->group(<span class="k">function</span> () { ... });</div></div>
+      <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI 0.140 · Python</div></div><div class="sc"><span class="cm"># 一组路由加依赖（=中间件）</span>
+posts = APIRouter(
+    prefix=<span class="s">'/posts'</span>,
+    dependencies=[Depends(get_current_user)])
+<span class="cm"># 组内每个路由都先跑 get_current_user</span></div></div>
+    </div>
+    <div class="note">注意区别：FastAPI 的「分组鉴权」是<b>路由级依赖</b>（<code>dependencies=</code>），不是全局 ASGI 中间件（那是 <code>add_middleware</code>，用于 CORS、日志这类全局逻辑）。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">06</div>
+    <h2>⚠️ Laravel 老手<span class="hl">常见坑</span></h2>
+    <div class="note"><b>坑 1 · 动态参数吃掉固定路由</b>：<code>/posts/{id}</code> 会匹配 <code>/posts/me</code>。需要固定子路由（如 <code>/posts/me</code>）就<b>写在参数路由之前</b>，或换命名避免冲突。</div>
+    <div class="note"><b>坑 2 · 装饰器挂错 router</b>：子路由要用 <code>@posts.get(...)</code> 而不是 <code>@router.get(...)</code>，否则前缀不生效；最后别忘了 <code>router.include_router(posts)</code>。</div>
+    <div class="note"><b>坑 3 · prefix 斜杠拼错</b>：<code>APIRouter(prefix='/posts')</code> + <code>@posts.get('')</code> → <code>/posts</code>；若写成 <code>@posts.get('/')</code> 会变成 <code>/posts/</code>（带尾斜杠）。保持一处带 <code>/</code> 即可。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">07</div>
+    <h2>三步，<span class="hl">跑起来</span></h2>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+<span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
+<span class="cm">  试 /ep02/health（公开）与 /ep02/posts（需 auth）</span></div></div>
+    <div class="note">把仓库里 <code>fastapi/app/ep02.py</code> 跑起来：<code>/ep02/health</code> 直接能访问；<code>/ep02/posts</code> 因分组依赖会先要求 <code>get_current_user</code>。打开 <code>/docs</code> 能看到 posts 分组。复制即跑。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">08</div>
+    <h2>上手练习<span class="hl">（10 分钟）</span></h2>
+    <p>给 posts 加一个嵌套路由 <code>GET /ep02/posts/{id}/comments</code>：</p>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">FastAPI · 你的练习</div></div><div class="sc"><span class="cm"># 在 ep02.py 的 posts 子 router 上加：</span>
+<span class="k">@posts</span>.get(<span class="s">'/{post_id}/comments'</span>)
+<span class="k">def</span> comments(post_id: <span class="k">int</span>):
+    <span class="k">return</span> {<span class="s">'post_id'</span>: post_id,
+            <span class="s">'comments'</span>: []}</div></div>
+    <div class="note">做完你会发现：嵌套路径只是把两段参数拼起来，和 Laravel <code>Route::get('/posts/{id}/comments')</code> 完全同构。难点不在语法，在「把路由收进哪个 router」的组织习惯。</div>
+  </div>
+
+  <div class="sec">
+    <div class="ghost">09</div>
+    <h2>速查表<span class="hl">（看完就能上手）</span></h2>
+    <table class="cheat"><thead><tr><th>你想做</th><th>Laravel</th><th>FastAPI</th></tr></thead><tbody>
+      <tr><td><b>声明 GET</b></td><td><code>Route::get()</code></td><td><code>@router.get()</code></td></tr>
+      <tr><td><b>声明 POST</b></td><td><code>Route::post()</code></td><td><code>@router.post()</code></td></tr>
+      <tr><td><b>路径参数</b></td><td><code>{id}</code></td><td><code>{id}: int</code></td></tr>
+      <tr><td><b>分组前缀</b></td><td><code>prefix()->group()</code></td><td><code>APIRouter(prefix=)</code></td></tr>
+      <tr><td><b>分组鉴权</b></td><td><code>middleware()->group()</code></td><td><code>APIRouter(dependencies=)</code></td></tr>
+      <tr><td><b>挂回主路由</b></td><td>自动加载</td><td><code>include_router()</code></td></tr>
+      <tr><td><b>自动文档</b></td><td>无</td><td><code>/docs</code> 自动生成</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="pull">路由心智没变：<br><span class="hl">URL 模式 → 处理函数</span>。<br>Laravel 写表，FastAPI 贴函数。</div>
+
+  <div class="sec">
+    <h2>资料来源<span class="hl">（逐字核实）</span></h2>
+    <div class="src">
+      <h3>📌 关键事实（2026-07-29 复核）</h3>
+      <ul>
+        <li><b>Laravel 13</b>：<code>Route::</code> 支持 <code>prefix()</code>、<code>middleware()</code>、<code>group()</code> 组合分组与鉴权 —— 官方文档 routing 章节</li>
+        <li><b>FastAPI 0.140.13</b>：<code>APIRouter</code> 支持 <code>prefix</code>、<code>tags</code>、<code>dependencies</code>（等效分组中间件）；<code>include_router</code> 挂载子路由 —— 官方文档 Routing / Bigger Applications</li>
+        <li>文中代码为<b>对照示意 + 可运行骨架</b>，完整版见仓库 <code>fastapi/app/ep02.py</code></li>
+      </ul>
+      <div class="disc">中立技术科普，不构成任何推广。版本号以官方文档为准。</div>
+    </div>
+  </div>
+
+
+  <div class="epnav"><a class="prev" href="../ep00/"><div class="lbl">← 上一期试读</div><div class="ttl">EP00 · 世界观</div></a><a class="next" href="../ep05/"><div class="lbl">下一期试读 →</div><div class="ttl">EP05 · 校验</div></a></div><div class="ttl">EP01 · 心智模型：容器 vs 依赖注入</div></a><a class="next" href="../ep03/"><div class="lbl">下一期 →</div><div class="ttl">EP03 · 控制器 vs 路径操作</div></a></div>
+  <div class="foot">会勇禾口王的AI笔记 · @huiyonghkw · Laravel↔FastAPI 对照学 EP02 · <a href="../">返回系列首页</a></div>
+</div>
+</body></html>
