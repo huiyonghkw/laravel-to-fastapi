@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP08 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
-<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/hekouwang-laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
 <div class="wrap">
   <div class="hero">
     <span class="kicker">EP08 · 事务与关联</span>
@@ -116,7 +116,7 @@ orders = db.execute(stmt).unique().scalars().all()
   <div class="sec">
     <div class="ghost">06</div>
     <h2>三步，<span class="hl">跑起来</span></h2>
-    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/laravel-to-fastapi/fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/hekouwang-laravel-to-fastapi/fastapi</span> <span class="ch">❯</span> <span class="o">uvicorn app.main:app --reload</span>
 <span class="ok">  → 打开 http://127.0.0.1:8000/docs</span>
 <span class="cm">  找到 POST /ep08/orders，点 Try it out</span>
 <span class="dir">~</span> <span class="ch">❯</span> <span class="o">curl -X POST http://127.0.0.1:8000/ep08/orders -H 'Content-Type: application/json' -d '{"amount":100,"sku":"A-1"}'</span>

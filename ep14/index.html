@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP14 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
-<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/hekouwang-laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
 <div class="wrap">
   <div class="hero">
     <span class="kicker">EP14 · 部署</span>
@@ -119,11 +119,11 @@ server {
   <div class="sec">
     <div class="ghost">06</div>
     <h2>三步，<span class="hl">跑起来</span></h2>
-    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker build -t lf-api -f fastapi/Dockerfile .</span>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">~/hekouwang-laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker build -t lf-api -f fastapi/Dockerfile .</span>
 <span class="ok">  → 构建镜像（含 gunicorn 启动）</span>
-<span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker run -p 8000:8000 -e WORKERS=4 lf-api</span>
+<span class="dir">~/hekouwang-laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">docker run -p 8000:8000 -e WORKERS=4 lf-api</span>
 <span class="ok">  → 容器起 4 个 Uvicorn worker</span>
-<span class="dir">~/laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">curl localhost:8000/ep14/env</span>
+<span class="dir">~/hekouwang-laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">curl localhost:8000/ep14/env</span>
 <span class="ok">  → {"worker":"4","host":"0.0.0.0","port":"8000"}</span></div></div>
     <div class="note">把仓库 <code>fastapi/</code> 跑起来：<code>/ep14/env</code> 直接返回当前 worker 数、host、port，确认「跑在哪」。Nginx 前置时把 <code>proxy_pass</code> 指向 8000 即可，静态资源交给 Nginx。</div>
   </div>

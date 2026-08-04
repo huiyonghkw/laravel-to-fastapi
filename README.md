@@ -4,8 +4,8 @@
 > 本系列以 **HTML 长文 + 可运行代码** 的形式发布在 **GitHub Pages**，不发小红书。
 
 **版本基线**：Laravel 13（PHP 8.3+）· FastAPI 0.140.13  
-**仓库**：https://github.com/huiyonghkw/laravel-to-fastapi  
-**站点**：推送 `main` 后开 Pages → `https://huiyonghkw.github.io/laravel-to-fastapi/`
+**仓库**：https://github.com/huiyonghkw/hekouwang-laravel-to-fastapi  
+**站点**：推送 `main` 后开 Pages → `https://huiyonghkw.github.io/hekouwang-laravel-to-fastapi/`
 
 ## EP 索引
 
@@ -33,7 +33,7 @@
 ## 目录结构
 
 ```
-laravel-to-fastapi/
+hekouwang-laravel-to-fastapi/
 ├── index.html               # GitHub Pages 首页
 ├── PLAN.md                  # EP 大纲 + 发布 SOP
 ├── README.md                # 本文件
@@ -78,9 +78,9 @@ cd .. && docker compose up --build
 
 仓库根目录即站点根。链接均用**相对路径**。
 
-1. 推到 GitHub（本仓 `huiyonghkw/laravel-to-fastapi`）。
+1. 推到 GitHub（本仓 `huiyonghkw/hekouwang-laravel-to-fastapi`）。
 2. **Settings → Pages → Source = Deploy from a branch**，目录 **/ (root)**。
-3. 访问 `https://huiyonghkw.github.io/laravel-to-fastapi/`。
+3. 访问 `https://huiyonghkw.github.io/hekouwang-laravel-to-fastapi/`。
 
 > `.nojekyll` 已就位。
 

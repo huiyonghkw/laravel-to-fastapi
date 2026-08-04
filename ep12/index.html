@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EP12 · Laravel↔FastAPI 对照学</title><link rel="stylesheet" href="../assets/theme.css?v=4"></head><body>
-<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
+<div class="topnav"><div class="brand"><span class="dot"></span>Laravel↔FastAPI 对照学</div><div class="links"><a href="../">系列首页</a><a href="https://github.com/huiyonghkw/hekouwang-laravel-to-fastapi" target="_blank" rel="noopener">GitHub</a></div></div>
 <div class="wrap">
   <div class="hero">
     <span class="kicker">EP12 · 测试</span>
@@ -104,7 +104,7 @@ test(<span class="s">'db-url 走容器注入'</span>, <span class="k">function</
       <div class="s"><span class="n">2</span><span class="t">起测试客户端 / 框架引导</span></div>
       <div class="s"><span class="n">3</span><span class="t">运行并看绿</span></div>
     </div>
-    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">pytest fastapi/tests/test_ep12.py</span>
+    <div class="term"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="t">terminal</div></div><div class="sc"><span class="dir">hekouwang-laravel-to-fastapi</span> <span class="ch">❯</span> <span class="o">pytest fastapi/tests/test_ep12.py</span>
 <span class="ok">  → 3 passed</span>
 <span class="cm">  Laravel 侧等价：php artisan test  （或 ./vendor/bin/pest）</span></div></div>
     <div class="note">FastAPI 侧 <code>test_ep12.py</code> 顶部已 <code>client = TestClient(app)</code>，直接 <code>pytest</code> 即可；Laravel 侧 <code>php artisan test</code> 会自动引导框架并跑 <code>tests/Feature/*</code>。复制即跑。</div>
